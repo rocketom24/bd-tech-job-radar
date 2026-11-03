@@ -6,3 +6,64 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum JobSourceType {
+  GOVERNMENT
+  COMPANY
+  UNIVERSITY
+  NGO
+  PORTAL
+  OTHER
+}
+
+model JobSource {
+  id   Int           @id @default(autoincrement())
+  name String
+  type JobSourceType
+  url  String
+  jobs Job[]
+}
+
+model Job {
+  id           Int       @id @default(autoincrement())
+  title        String
+  organization String
+  sector       String
+  category     String
+  location     String
+  description  String
+  salary       String    @default("")
+  experience   String    @default("")
+  skills       String[]  @default([])
+  deadline     DateTime? @db.Timestamptz
+  sourceId     Int
+  sourceUrl    String
+  verified     Boolean   @default(false)
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+
+  source JobSource @relation(fields: [sourceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([sourceId])
+  @@index([createdAt(sort: Desc)])
+  @@index([sector])
+  @@index([category])
+}
+
+model User {
+  id                 Int      @id @default(autoincrement())
+  email              String   @unique
+  subscriptionStatus String   @default("FREE")
+  createdAt          DateTime @default(now()) @db.Timestamptz
+  usages             Usage[]
+}
+
+model Usage {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  endpoint  String
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([userId, createdAt])
+}
