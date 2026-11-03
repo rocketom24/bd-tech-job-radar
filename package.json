@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@prisma/adapter-neon": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^18.0.9",
     "next": "16.4.4",
     "react": "19.3.0",
     "react-dom": "19.3.0"
@@ -19,6 +22,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.4",
+    "prisma": "^7.10.1",
     "typescript": "^5"
   }
 }
