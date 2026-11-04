@@ -1,8 +1,51 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { jobsQuerySchema } from "@/lib/schemas";
+import { z } from "zod";
 
-export async function GET() {
+const FILTER_KEYS = ["keyword", "location", "category"] as const;
+
+function badRequest(message: string, details?: unknown) {
+  return Response.json({ error: { message, details } }, { status: 400 });
+}
+
+export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+
+  const repeated = FILTER_KEYS.filter((key) => params.getAll(key).length > 1);
+  if (repeated.length > 0) {
+    return badRequest(`Repeated query parameter(s) not allowed: ${repeated.join(", ")}`);
+  }
+
+  const parsed = jobsQuerySchema.safeParse(
+    Object.fromEntries(FILTER_KEYS.flatMap((key) => (params.has(key) ? [[key, params.get(key)]] : []))),
+  );
+  if (!parsed.success) {
+    return badRequest("Invalid query parameters", z.flattenError(parsed.error).fieldErrors);
+  }
+  const { keyword, location, category } = parsed.data;
+
+  const where: Prisma.JobWhereInput = {
+    AND: [
+      ...(keyword
+        ? [
+            {
+              OR: [
+                { title: { contains: keyword, mode: "insensitive" as const } },
+                { organization: { contains: keyword, mode: "insensitive" as const } },
+                { description: { contains: keyword, mode: "insensitive" as const } },
+              ],
+            },
+          ]
+        : []),
+      ...(location ? [{ location: { contains: location, mode: "insensitive" as const } }] : []),
+      ...(category ? [{ category: { equals: category, mode: "insensitive" as const } }] : []),
+    ],
+  };
+
   try {
     const data = await prisma.job.findMany({
+      where,
       select: {
         id: true,
         title: true,
