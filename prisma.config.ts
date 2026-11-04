@@ -3,6 +3,9 @@ import { defineConfig, env } from "prisma/config";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
+  migrations: {
+    seed: "tsx prisma/seed.ts",
+  },
   datasource: {
     // CLI only (migrations, introspection): Neon direct connection.
     // The app connects at runtime with the pooled DATABASE_URL.
