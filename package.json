@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test:api": "node --test \"tests/*.test.mjs\""
   },
   "dependencies": {
     "@prisma/adapter-neon": "^7.10.1",

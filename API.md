@@ -2,11 +2,31 @@
 
 Read-only JSON API. No authentication, no pagination.
 
+## Running locally
+
+```bash
+npm install
+npm run dev            # http://localhost:3000, needs DATABASE_URL in .env
+```
+
+## Tests
+
+Read-only HTTP integration tests (Node built-in test runner, no extra dependencies). Start the dev server, then in another terminal:
+
+```bash
+npm run test:api                       # against http://localhost:3000
+BASE_URL=http://localhost:3210 npm run test:api
+```
+
+They expect the seeded development database (25 jobs, 5 sources; `npx prisma db seed`). `tests/db-failure.test.mjs` also starts its own temporary dev server (port 3299, separate build dir) with an unreachable `DATABASE_URL` to check that failures return a generic 500 and log no credentials.
+
+Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Import), keep `baseUrl` = `http://localhost:3000`, and run the collection with the Collection Runner. Each request has test scripts.
+
 ## Conventions
 
 - Success: `{ "data": ... }`
 - Error: `{ "error": { "message": string, "details"?: object } }`
-- 500 responses are always `{ "error": { "message": "Internal server error" }}`; the real error is logged server-side only.
+- 500 responses are always `{ "error": { "message": "Internal server error" }}`; the server log records only the error class and code (never messages, queries or connection details).
 
 | Status | Meaning |
 | --- | --- |
@@ -28,6 +48,8 @@ Query parameters (all optional; each may appear at most once):
 | `category` | 50 | case-insensitive exact match of `category` |
 
 Values are trimmed; empty/whitespace-only values are ignored. Filters combine with AND. Unknown parameters are ignored.
+
+`keyword` does **not** search `skills` (e.g. `?keyword=kubernetes` returns no jobs even if a job lists Kubernetes as a skill). Matching is literal: `%`, `_` and `\` in a value are escaped, so `?keyword=%25` matches only text containing a percent sign, not everything.
 
 ```json
 {

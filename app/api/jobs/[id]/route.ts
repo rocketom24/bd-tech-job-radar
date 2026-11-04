@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 
 const MAX_INT4 = 2_147_483_647;
@@ -37,7 +38,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
     return Response.json({ data });
   } catch (error) {
-    console.error("GET /api/jobs/[id] failed", error);
+    logError("GET /api/jobs/[id]", error);
     return Response.json({ error: { message: "Internal server error" } }, { status: 500 });
   }
 }

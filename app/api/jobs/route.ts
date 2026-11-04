@@ -1,9 +1,14 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { logError } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { jobsQuerySchema } from "@/lib/schemas";
 import { z } from "zod";
 
 const FILTER_KEYS = ["keyword", "location", "category"] as const;
+
+// Prisma passes contains/equals(mode: insensitive) to ILIKE unescaped, so
+// user-supplied % _ \ would act as wildcards. Escape them to get literal search.
+const literal = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 
 function badRequest(message: string, details?: unknown) {
   return Response.json({ error: { message, details } }, { status: 400 });
@@ -31,15 +36,15 @@ export async function GET(request: Request) {
         ? [
             {
               OR: [
-                { title: { contains: keyword, mode: "insensitive" as const } },
-                { organization: { contains: keyword, mode: "insensitive" as const } },
-                { description: { contains: keyword, mode: "insensitive" as const } },
+                { title: { contains: literal(keyword), mode: "insensitive" as const } },
+                { organization: { contains: literal(keyword), mode: "insensitive" as const } },
+                { description: { contains: literal(keyword), mode: "insensitive" as const } },
               ],
             },
           ]
         : []),
-      ...(location ? [{ location: { contains: location, mode: "insensitive" as const } }] : []),
-      ...(category ? [{ category: { equals: category, mode: "insensitive" as const } }] : []),
+      ...(location ? [{ location: { contains: literal(location), mode: "insensitive" as const } }] : []),
+      ...(category ? [{ category: { equals: literal(category), mode: "insensitive" as const } }] : []),
     ],
   };
 
@@ -68,7 +73,7 @@ export async function GET(request: Request) {
 
     return Response.json({ data });
   } catch (error) {
-    console.error("GET /api/jobs failed", error);
+    logError("GET /api/jobs", error);
     return Response.json({ error: { message: "Internal server error" } }, { status: 500 });
   }
 }

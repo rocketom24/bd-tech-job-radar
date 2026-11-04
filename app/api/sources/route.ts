@@ -1,3 +1,4 @@
+import { logError } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -8,7 +9,7 @@ export async function GET() {
     });
     return Response.json({ data });
   } catch (error) {
-    console.error("GET /api/sources failed", error);
+    logError("GET /api/sources", error);
     return Response.json({ error: { message: "Internal server error" } }, { status: 500 });
   }
 }
