@@ -2,7 +2,7 @@
 
 A 3-day production-style demo. Keep it simple and realistic. Nothing is built without a reason.
 
-**Status:** Phase 1 (understanding and architecture). No application code, packages, Prisma schema, or routes exist yet.
+**Status:** Day 1 backend is implemented: Prisma schema and migration, seed data, and three read-only endpoints (see [README.md](README.md) and [API.md](API.md) for what runs today). Sections 2, 7, 8 and 9 and the "planned" parts of sections 3 and 5 describe intent, not current behavior. Where this file and the code differ, the code, `API.md` and `DATABASE_DESIGN.md` are authoritative.
 
 ---
 
@@ -81,7 +81,7 @@ Client
 - Public APIs are **read-only** in Day 1. Only migrations and the seed script write to the database.
 - No authentication, no usage enforcement in Day 1.
 
-### Planned file layout (not created yet)
+### File layout (as implemented; also `lib/log.ts` for safe error logging and `prisma.config.ts` for CLI config)
 
 ```
 app/api/jobs/route.ts
@@ -166,6 +166,8 @@ One source publishes many jobs. Repeating source details on every job row would 
 ---
 
 ## 5. API plan (Day 1, read-only)
+
+> Original plan. Implemented: `keyword` (title, organization **and description**), `location` and `category` only. Not implemented: `sector`, `sourceId`, `verified` filters and pagination. Current behavior is in [API.md](API.md).
 
 | Method | Path | Purpose |
 |---|---|---|

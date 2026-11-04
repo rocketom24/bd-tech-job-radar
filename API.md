@@ -5,8 +5,8 @@ Read-only JSON API. No authentication, no pagination.
 ## Running locally
 
 ```bash
-npm install
-npm run dev            # http://localhost:3000, needs DATABASE_URL in .env
+npm ci
+npm run dev            # http://localhost:3000, needs DATABASE_URL in .env (full setup: README.md)
 ```
 
 ## Tests
@@ -47,7 +47,7 @@ Query parameters (all optional; each may appear at most once):
 | `location` | 100 | case-insensitive substring of `location` |
 | `category` | 50 | case-insensitive exact match of `category` |
 
-Values are trimmed; empty/whitespace-only values are ignored. Filters combine with AND. Unknown parameters are ignored.
+Values are trimmed; empty/whitespace-only values are ignored. A NUL character (`%00`) is rejected with 400. Filters combine with AND. Unknown parameters are ignored.
 
 `keyword` does **not** search `skills` (e.g. `?keyword=kubernetes` returns no jobs even if a job lists Kubernetes as a skill). Matching is literal: `%`, `_` and `\` in a value are escaped, so `?keyword=%25` matches only text containing a percent sign, not everything.
 

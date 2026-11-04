@@ -47,3 +47,15 @@ next-env.d.ts
 
 # db-failure test dev build
 /.next-dbfail/
+
+# other secret-bearing files (.env* above already covers .env.*.credentials)
+*.credentials
+*.key
+*.p12
+*.pfx
+.netrc
+
+# terraform state
+*.tfstate
+*.tfstate.*
+.terraform/

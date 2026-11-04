@@ -1,6 +1,6 @@
 # Database Design
 
-PostgreSQL on Neon. Four tables. This is the design only; the Prisma schema comes in Phase 4 and must match it.
+PostgreSQL on Neon. Four tables. The Prisma schema (`prisma/schema.prisma`) and the initial migration implement this design; the migration SQL is the source of truth.
 
 ```
 JobSource 1 ---< Job
@@ -99,13 +99,13 @@ One source publishes many jobs. Copying source name/type/url onto every job row 
 | Name | Used by | Source |
 |---|---|---|
 | `DATABASE_URL` | app runtime | Neon dashboard -> Connect -> pooled |
-| `DIRECT_URL` | Prisma migrations (Phase 4) | Neon dashboard -> Connect -> direct (untick "Connection pooling") |
+| `DIRECT_URL` | Prisma CLI (migrations, validate) | Neon dashboard -> Connect -> direct (untick "Connection pooling") |
 
 Stored in `.env` (git-ignored). `.env.example` holds placeholders and is committed.
 
 ## Reference DDL
 
-For checking only. Phase 4 migrations are the source of truth.
+For checking only. `prisma/migrations/` is the source of truth.
 
 ```sql
 CREATE TYPE "JobSourceType" AS ENUM

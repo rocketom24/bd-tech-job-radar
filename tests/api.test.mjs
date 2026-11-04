@@ -88,6 +88,9 @@ for (const [name, qs] of [
   ["keyword 101 chars", "?keyword=" + "a".repeat(101)],
   ["location 101 chars", "?location=" + "a".repeat(101)],
   ["category 51 chars", "?category=" + "a".repeat(51)],
+  ["NUL in keyword", "?keyword=a%00b"],
+  ["NUL in location", "?location=%00"],
+  ["NUL in category", "?category=%00"],
 ]) {
   test(`400: ${name}`, async () => assertError(await get("/api/jobs" + qs), 400));
 }

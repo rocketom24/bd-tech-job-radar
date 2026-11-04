@@ -5,6 +5,8 @@ const optionalText = (max: number) =>
     .string()
     .trim()
     .max(max)
+    // Postgres text cannot hold NUL; without this the query fails and the client gets a 500.
+    .refine((value) => !value.includes("\0"), "Must not contain NUL characters")
     .transform((value) => value || undefined)
     .optional();
 

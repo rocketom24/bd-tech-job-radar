@@ -1,36 +1,156 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bangladesh Tech Job Radar
 
-## Getting Started
+A job discovery and aggregation backend focused on Bangladesh's technology job market. Job seekers currently have to check many scattered sources (government circulars, company career pages, university and NGO notices, portals); the long-term idea is one searchable place with every posting in a common shape, linked back to its source.
 
-First, run the development server:
+## Status
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+**Backend-focused demo (Day 1 foundation).** What exists today:
+
+- A PostgreSQL schema (Neon) with Prisma migrations and four tables.
+- Three read-only JSON endpoints: `GET /api/jobs`, `GET /api/jobs/{id}`, `GET /api/sources`.
+- Idempotent seed script with **25 synthetic demo jobs** and 5 demo sources. All records are demonstration data; every URL uses `example.com`. They are not real vacancies.
+- HTTP integration tests and a Postman collection.
+
+What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), authentication, subscriptions or usage enforcement (`User` and `Usage` tables exist but nothing reads or writes them), pagination, full-text search. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
+
+## Tech stack
+
+Next.js 16 (App Router, Route Handlers), TypeScript, Zod 4, Prisma ORM 7 with the Neon driver adapter, PostgreSQL 18 on Neon, Node.js. Tests use the Node built-in test runner.
+
+## Architecture
+
+```
+Client -> Route Handler -> Zod validation -> Prisma -> Neon PostgreSQL -> JSON response
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Route handlers call Prisma directly; there are no service or repository layers. One shared Prisma client lives in `lib/prisma.ts`. The app connects at runtime through the pooled `DATABASE_URL`; the Prisma CLI (migrations) uses the direct `DIRECT_URL`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The planned ingestion pipeline (Sources -> Collection -> Raw Content -> Extraction -> Normalization -> Validation -> Deduplication -> PostgreSQL) is a **future direction only**. Details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Repository structure
 
-## Learn More
+```
+app/api/jobs/route.ts        GET /api/jobs (filters)
+app/api/jobs/[id]/route.ts   GET /api/jobs/{id}
+app/api/sources/route.ts     GET /api/sources
+lib/prisma.ts                shared Prisma client (Neon adapter, DATABASE_URL)
+lib/schemas.ts               Zod query schema
+lib/log.ts                   safe error logging
+prisma/schema.prisma         data model
+prisma/migrations/           SQL migrations (committed)
+prisma/seed.ts               demo seed data
+prisma.config.ts             Prisma CLI config (DIRECT_URL, seed command)
+tests/                       API and DB-failure tests
+postman/                     Postman collection
+ARCHITECTURE.md  DATABASE_DESIGN.md  API.md
+```
 
-To learn more about Next.js, take a look at the following resources:
+`generated/prisma/` (the Prisma client) is generated locally and git-ignored.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Prerequisites
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Node.js `^20.19`, `^22.12` or `>=24` (Prisma 7's requirement; Next.js itself needs >= 20.9) and npm.
+- A Neon PostgreSQL database for **development**. Use a dev branch, not production.
 
-## Deploy on Vercel
+## Setup
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm ci
+cp .env.example .env          # Windows cmd: copy .env.example .env
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Edit `.env` and set both variables from the Neon dashboard (Connect button):
+
+| Variable | Used by | Value |
+| --- | --- | --- |
+| `DATABASE_URL` | app runtime, seed script | **pooled** connection string (host contains `-pooler`) |
+| `DIRECT_URL` | Prisma CLI (`migrate`, `validate`, ...) | **direct** connection string (no `-pooler`) |
+
+`.env` is git-ignored. Never commit real connection strings.
+
+> **Warning: keep production credentials out of this project folder.**
+>
+> - Do not create `.env.production.local` with production database credentials in the local development project. Next.js automatically loads this file in production mode, including during local `next build` and `next start`.
+> - Keep production credentials in the hosting provider's environment-variable settings.
+> - Use a separate development Neon branch for local development and testing.
+
+Then generate the client, apply migrations and seed:
+
+```bash
+npm run db:generate           # generates generated/prisma/ (required before dev/build/tsc)
+npx prisma migrate deploy     # applies committed migrations; does not create new ones
+npm run db:seed               # idempotent; safe to re-run
+npm run dev                   # http://localhost:3000
+```
+
+The seed only creates or updates its own demo rows (matched by `example.com` URLs) and never deletes anything. It refuses to run with `NODE_ENV=production`, but it cannot tell which database it points at, so check that `DATABASE_URL` is your development database.
+
+## Scripts
+
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` / `build` / `start` | Next.js dev server, production build, production server |
+| `npm run lint` | ESLint |
+| `npm run db:generate` | `prisma generate` |
+| `npm run db:seed` | run `prisma/seed.ts` |
+| `npm run test:api` | run `tests/*.test.mjs` |
+
+Type-check with `npx tsc --noEmit`.
+
+## Testing
+
+Start the dev server (or `npm start` after a build) in one terminal, then:
+
+```bash
+npm run test:api                         # against http://localhost:3000
+BASE_URL=http://localhost:3210 npm run test:api
+```
+
+The tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
+
+## Production build
+
+```bash
+npm run build
+npm start
+```
+
+Provide `DATABASE_URL` (pooled) in the environment of the running server. Apply migrations separately with `npx prisma migrate deploy` using `DIRECT_URL`.
+
+## API overview
+
+All endpoints are read-only and unauthenticated. Success: `{ "data": ... }`. Error: `{ "error": { "message": ..., "details"?: ... } }`.
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /api/jobs` | All jobs, newest first. Optional `keyword`, `location`, `category` filters. |
+| `GET /api/jobs/{id}` | One job including its source. 400 for an invalid id, 404 if missing. |
+| `GET /api/sources` | All sources, sorted by name. |
+
+Full parameter and response reference: [API.md](API.md).
+
+## Database overview
+
+| Model | Purpose |
+| --- | --- |
+| `JobSource` | where jobs come from (`GOVERNMENT`, `COMPANY`, `UNIVERSITY`, `NGO`, `PORTAL`, `OTHER`) |
+| `Job` | a posting; belongs to one `JobSource` (`ON DELETE RESTRICT`); `deadline` is nullable |
+| `User` | placeholder for future subscriptions; unique `email` |
+| `Usage` | placeholder for future per-user call tracking; belongs to a `User` |
+
+Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema is managed only through Prisma migrations in `prisma/migrations/`.
+
+## Current limitations
+
+- Data is synthetic demo data; nothing scrapes or ingests real job sites.
+- No pagination: `GET /api/jobs` returns every match.
+- `keyword` searches `title`, `organization` and `description` only. It does **not** search the `skills` array.
+- Substring search uses `ILIKE` without an index (fine at this size).
+- No authentication, authorization, rate limiting or subscription enforcement.
+- No frontend; `/` is the unmodified Next.js starter page.
+- `Job.sourceUrl` is not unique, so there is no deduplication yet.
+- Tests need a running server and the seeded development database; there is no CI.
+
+## Future roadmap
+
+Planned, not implemented: real ingestion from a few practical sources (collection, extraction, normalization, validation, basic deduplication), a minimal frontend with search and job details, a basic usage-restriction demo using `User`/`Usage`, pagination, and deployment. Further out: authentication, payments, OCR/AI extraction, full-text search, background workers. See [ARCHITECTURE.md](ARCHITECTURE.md).
