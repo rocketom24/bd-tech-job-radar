@@ -69,6 +69,6 @@ export async function GET(request: Request) {
     return Response.json({ data });
   } catch (error) {
     console.error("GET /api/jobs failed", error);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    return Response.json({ error: { message: "Internal server error" } }, { status: 500 });
   }
 }
