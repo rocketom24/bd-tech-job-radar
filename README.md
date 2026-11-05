@@ -6,7 +6,7 @@ A job discovery and aggregation backend focused on Bangladesh's technology job m
 
 **Backend-focused demo (Day 1 foundation).** What exists today:
 
-- A PostgreSQL schema (Neon) with Prisma migrations and four tables.
+- A PostgreSQL schema (Neon) with Prisma migrations and four tables. Jobs carry a legacy `salary` text plus structured salary fields (see [API.md](API.md#salary)).
 - Three read-only JSON endpoints: `GET /api/jobs`, `GET /api/jobs/{id}`, `GET /api/sources`.
 - Idempotent seed script with **25 synthetic demo jobs** and 5 demo sources. All records are demonstration data; every URL uses `example.com`. They are not real vacancies.
 - HTTP integration tests and a Postman collection.
@@ -78,10 +78,12 @@ Then generate the client, apply migrations and seed:
 
 ```bash
 npm run db:generate           # generates generated/prisma/ (required before dev/build/tsc)
-npx prisma migrate deploy     # applies committed migrations; does not create new ones
+npx prisma migrate deploy     # applies committed migrations (incl. add_structured_salary: additive, never resets)
 npm run db:seed               # idempotent; safe to re-run
 npm run dev                   # http://localhost:3000
 ```
+
+Seeded salary figures are synthetic demonstration data, not verified employer information.
 
 The seed only creates or updates its own demo rows (matched by `example.com` URLs) and never deletes anything. It refuses to run with `NODE_ENV=production`, but it cannot tell which database it points at, so check that `DATABASE_URL` is your development database.
 
@@ -106,7 +108,7 @@ npm run test:api                         # against http://localhost:3000
 BASE_URL=http://localhost:3210 npm run test:api
 ```
 
-The tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
+The tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/schemas.test.mjs` is pure (no server or database). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
 
 ## Production build
 
@@ -134,7 +136,7 @@ Full parameter and response reference: [API.md](API.md).
 | Model | Purpose |
 | --- | --- |
 | `JobSource` | where jobs come from (`GOVERNMENT`, `COMPANY`, `UNIVERSITY`, `NGO`, `PORTAL`, `OTHER`) |
-| `Job` | a posting; belongs to one `JobSource` (`ON DELETE RESTRICT`); `deadline` is nullable |
+| `Job` | a posting; belongs to one `JobSource` (`ON DELETE RESTRICT`); `deadline` and the structured salary fields are nullable; legacy `salary` text kept |
 | `User` | placeholder for future subscriptions; unique `email` |
 | `Usage` | placeholder for future per-user call tracking; belongs to a `User` |
 
@@ -144,6 +146,7 @@ Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema 
 
 - Data is synthetic demo data; nothing scrapes or ingests real job sites.
 - No pagination: `GET /api/jobs` returns every match.
+- Salary filtering/sorting is not implemented; structured salary is returned, not queryable. There is no salary write endpoint yet, so `salarySchema` is exercised by the seed and tests only.
 - `keyword` searches `title`, `organization` and `description` only. It does **not** search the `skills` array.
 - Substring search uses `ILIKE` without an index (fine at this size).
 - No authentication, authorization, rate limiting or subscription enforcement.

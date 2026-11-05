@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const JOB_KEYS = ["category", "createdAt", "deadline", "description", "experience", "id", "location", "organization", "salary", "sector", "skills", "sourceId", "sourceUrl", "title", "verified"];
+const JOB_KEYS = ["category", "createdAt", "deadline", "description", "experience", "id", "location", "organization", "salary", "salaryCurrency", "salaryDisclosure", "salaryMax", "salaryMin", "salaryPeriod", "sector", "skills", "sourceId", "sourceUrl", "title", "verified"];
 const SOURCE_KEYS = ["id", "name", "type", "url"];
 
 async function get(path) {
@@ -127,4 +127,62 @@ test("GET /api/sources", async () => {
   for (const s of r.body.data) assert.deepEqual(keys(s), SOURCE_KEYS);
   const names = r.body.data.map((s) => s.name);
   assert.deepEqual(names, [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+});
+
+// ---- Structured salary (seed is demonstration data; see prisma/seed.ts) ----
+const bySlug = async () => new Map((await jobs()).map((j) => [j.sourceUrl.split("/").pop(), j]));
+const SAL = ["salaryMin", "salaryMax", "salaryCurrency", "salaryPeriod", "salaryDisclosure"];
+
+test("legacy jobs: structured salary fields are all null, legacy text kept", async () => {
+  const m = await bySlug();
+  for (const slug of ["devops-engineer-opsforge", "it-officer-demo-bank", "software-engineer-appnest"]) {
+    const j = m.get(slug);
+    for (const k of SAL) assert.equal(j[k], null, `${slug}.${k}`);
+    assert.match(j.salary, /^Tk /);
+  }
+});
+test("disclosed BDT monthly range; Decimal serialized as string; legacy text unchanged", async () => {
+  const j = (await bySlug()).get("backend-developer-nodecraft");
+  assert.deepEqual(SAL.map((k) => j[k]), ["70000", "110000", "BDT", "MONTHLY", "DISCLOSED"]);
+  assert.equal(typeof j.salaryMin, "string");
+  assert.equal(j.salary, "Tk 70,000 - 110,000");
+});
+test("government grade numbers are not parsed as amounts", async () => {
+  const j = (await bySlug()).get("it-officer-ministry");
+  assert.deepEqual([j.salaryMin, j.salaryMax], ["35500", "67010"]);
+});
+test("USD hourly, USD monthly and EUR yearly", async () => {
+  const m = await bySlug();
+  assert.deepEqual(SAL.map((k) => m.get("data-analyst-insightly")[k]), ["15", "25", "USD", "HOURLY", "DISCLOSED"]);
+  assert.deepEqual(SAL.map((k) => m.get("backend-developer-pyroute")[k]), ["2000", "3200", "USD", "MONTHLY", "DISCLOSED"]);
+  assert.deepEqual(SAL.map((k) => m.get("fullstack-developer-cloudlane")[k]), ["28000", "42000", "EUR", "YEARLY", "DISCLOSED"]);
+});
+test("negotiable and not-disclosed carry no amounts or currency", async () => {
+  const m = await bySlug();
+  for (const [slug, d] of [["qa-engineer-testbridge", "NEGOTIABLE"], ["assistant-programmer-bytenest", "NOT_DISCLOSED"]]) {
+    const j = m.get(slug);
+    assert.deepEqual([j.salaryMin, j.salaryMax, j.salaryCurrency, j.salaryDisclosure], [null, null, null, d]);
+  }
+});
+test("seeded salary data covers every currency, period and disclosure", async () => {
+  const all = [...(await bySlug()).values()];
+  const seen = (k) => new Set(all.map((j) => j[k]));
+  for (const v of ["BDT", "USD", "EUR"]) assert.ok(seen("salaryCurrency").has(v), v);
+  for (const v of ["MONTHLY", "YEARLY", "HOURLY"]) assert.ok(seen("salaryPeriod").has(v), v);
+  for (const v of ["DISCLOSED", "NEGOTIABLE", "NOT_DISCLOSED", null]) assert.ok(seen("salaryDisclosure").has(v), String(v));
+});
+test("every seeded job satisfies the documented salary invariants", async () => {
+  for (const j of await jobs()) {
+    const hasAmt = j.salaryMin !== null || j.salaryMax !== null;
+    if (j.salaryMin !== null && j.salaryMax !== null) assert.ok(Number(j.salaryMin) <= Number(j.salaryMax), j.id);
+    if (j.salaryDisclosure === "DISCLOSED") assert.ok(hasAmt && j.salaryCurrency && j.salaryPeriod, j.id);
+    else if (j.salaryDisclosure !== null) assert.ok(!hasAmt && j.salaryCurrency === null, j.id);
+    else assert.ok(SAL.every((k) => j[k] === null), j.id);
+    if (j.salaryCurrency !== null) assert.match(j.salaryCurrency, /^[A-Z]{3}$/);
+  }
+});
+test("detail endpoint returns the same salary fields as the list", async () => {
+  const list = (await bySlug()).get("data-analyst-insightly");
+  const d = (await get("/api/jobs/" + list.id)).body.data;
+  for (const k of SAL) assert.equal(d[k], list[k], k);
 });

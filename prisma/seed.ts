@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../lib/prisma";
 import type { JobSourceType } from "../generated/prisma/client";
+import { salarySchema, type SalaryInput } from "../lib/schemas";
 
 // Synthetic demo data only. Not real vacancies. All URLs use reserved example.com.
 // Idempotency: sources are matched on url, jobs on sourceUrl (findFirst), then
@@ -66,6 +67,57 @@ const JOBS: JobSeed[] = [
   { src: "ngo", slug: "fullstack-developer-demo-health", title: "Full Stack Developer", org: "Demo Community Health Trust", sector: "NGO", category: "Software", location: "Remote", salary: "Tk 65,000 - 100,000", experience: "3+ years", skills: ["React", "Node.js", "PostgreSQL", "DHIS2"], deadline: null, verified: false, created: "2026-10-01", desc: "Build offline-friendly health reporting tools for community clinics in a demo programme." },
 ];
 
+// ---- Structured salary (DEMONSTRATION DATA ONLY) -------------------------------------
+// None of these figures are verified employer information.
+// - BDT ranges are copied from the existing `salary` text of the same job. Government
+//   "Grade N" numbers are pay-scale labels and are NOT amounts; they are ignored here.
+// - USD/EUR, HOURLY, YEARLY, NEGOTIABLE and NOT_DISCLOSED rows are SYNTHETIC examples so the
+//   API can show every shape. Where the structured value would contradict the old text, the
+//   legacy `salary` text is overridden below so the two never disagree.
+// - Slugs absent from the map are left as legacy rows: all structured columns stay NULL.
+const bdt = (min: number, max: number): SalaryInput => ({
+  salaryMin: min, salaryMax: max, salaryCurrency: "BDT", salaryPeriod: "MONTHLY", salaryDisclosure: "DISCLOSED",
+});
+const disclosed = (
+  salaryCurrency: string, salaryPeriod: "MONTHLY" | "YEARLY" | "HOURLY", salaryMin: number, salaryMax: number,
+): SalaryInput => ({ salaryMin, salaryMax, salaryCurrency, salaryPeriod, salaryDisclosure: "DISCLOSED" });
+const NEGOTIABLE: SalaryInput = { salaryDisclosure: "NEGOTIABLE" };
+const NOT_DISCLOSED: SalaryInput = { salaryDisclosure: "NOT_DISCLOSED" };
+
+const SALARIES: Record<string, { text?: string; sal: SalaryInput }> = {
+  // BDT monthly, from existing text
+  "it-officer-ministry": { sal: bdt(35500, 67010) },
+  "assistant-programmer-bureau": { sal: bdt(22000, 53060) },
+  "system-engineer-ict-division": { sal: bdt(43000, 69850) },
+  "data-analyst-statistics": { sal: bdt(35500, 67010) },
+  "software-engineer-egov": { sal: bdt(50000, 70000) },
+  "backend-developer-nodecraft": { sal: bdt(70000, 110000) },
+  "frontend-developer-pixelhive": { sal: bdt(55000, 90000) },
+  "backend-developer-paywave": { sal: bdt(85000, 135000) },
+  "data-analyst-credit-insight": { sal: bdt(60000, 100000) },
+  "devops-engineer-secure-pay": { sal: bdt(95000, 150000) },
+  "system-engineer-demo-university": { sal: bdt(40000, 62000) },
+  "assistant-programmer-demo-institute": { sal: bdt(28000, 42000) },
+  "data-analyst-demo-relief": { sal: bdt(48000, 72000) },
+  // Synthetic foreign-currency examples (remote roles); text overridden to match
+  "fullstack-developer-cloudlane": { text: "EUR 28,000 - 42,000 / year (demo)", sal: disclosed("EUR", "YEARLY", 28000, 42000) },
+  "backend-developer-pyroute": { text: "USD 2,000 - 3,200 / month (demo)", sal: disclosed("USD", "MONTHLY", 2000, 3200) },
+  "data-analyst-insightly": { text: "USD 15 - 25 / hour (demo)", sal: disclosed("USD", "HOURLY", 15, 25) },
+  "fullstack-developer-demo-health": { text: "USD 1,800 - 2,800 / month (demo)", sal: disclosed("USD", "MONTHLY", 1800, 2800) },
+  // Synthetic negotiable / undisclosed examples; text overridden to match
+  "qa-engineer-testbridge": { text: "Negotiable", sal: NEGOTIABLE },
+  "it-officer-retailmart": { text: "Negotiable", sal: NEGOTIABLE },
+  "fullstack-developer-research-lab": { text: "Negotiable", sal: NEGOTIABLE },
+  "assistant-programmer-bytenest": { text: "", sal: NOT_DISCLOSED },
+  "qa-engineer-finedge": { text: "", sal: NOT_DISCLOSED },
+  // Left as legacy rows (structured columns NULL): devops-engineer-opsforge,
+  // it-officer-demo-bank, software-engineer-appnest.
+};
+for (const [slug, { sal }] of Object.entries(SALARIES)) {
+  const r = salarySchema.safeParse(sal);
+  if (!r.success) throw new Error(`Seed salary invalid for ${slug}: ${r.error.message}`);
+}
+
 const jobUrl = (j: JobSeed) => `https://demo-jobs.example.com/${j.sector.toLowerCase()}/${j.slug}`;
 
 async function main() {
@@ -89,10 +141,15 @@ async function main() {
   let jc = 0, ju = 0;
   for (const j of JOBS) {
     const sourceUrl = jobUrl(j);
+    const entry = SALARIES[j.slug];
+    const sal = entry?.sal ?? {};
     const data = {
       title: j.title, organization: j.org, sector: j.sector, category: j.category, location: j.location,
-      description: j.desc, salary: j.salary, experience: j.experience, skills: j.skills,
+      description: j.desc, salary: entry?.text ?? j.salary, experience: j.experience, skills: j.skills,
       deadline: j.deadline ? new Date(`${j.deadline}T00:00:00Z`) : null,
+      // Explicit nulls so a re-run resets legacy rows instead of keeping stale values.
+      salaryMin: sal.salaryMin ?? null, salaryMax: sal.salaryMax ?? null, salaryCurrency: sal.salaryCurrency ?? null,
+      salaryPeriod: sal.salaryPeriod ?? null, salaryDisclosure: sal.salaryDisclosure ?? null,
       sourceId: ids.get(j.src)!, sourceUrl, verified: j.verified, createdAt: new Date(`${j.created}T08:00:00Z`),
     };
     const found = await prisma.job.findFirst({ where: { sourceUrl } });

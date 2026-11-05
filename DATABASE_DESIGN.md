@@ -27,7 +27,12 @@ User      1 ---< Usage
 | category | text | NO | tech role area |
 | location | text | NO | |
 | description | text | NO | |
-| salary | text | NO, default `''` | free text ("negotiable") |
+| salary | text | NO, default `''` | legacy free text, kept unchanged |
+| salaryMin | numeric(12,2) | YES | |
+| salaryMax | numeric(12,2) | YES | |
+| salaryCurrency | char(3) | YES | uppercase code, e.g. BDT |
+| salaryPeriod | `SalaryPeriod` enum | YES | MONTHLY, YEARLY, HOURLY |
+| salaryDisclosure | `SalaryDisclosure` enum | YES | DISCLOSED, NEGOTIABLE, NOT_DISCLOSED; NULL = legacy row |
 | experience | text | NO, default `''` | free text |
 | skills | text[] | NO, default `{}` | |
 | deadline | timestamptz | **YES** | many postings have none |
@@ -65,7 +70,8 @@ Update rule is the default (`NO ACTION`); ids never change.
 
 - PKs on all four `id` columns.
 - `User.email` UNIQUE.
-- `Job.deadline` is the only nullable column in the schema.
+- `Job.deadline` and the five structured salary columns are the only nullable `Job` columns.
+- Salary CHECKs: `Job_salary_amounts_nonnegative`, `Job_salary_min_le_max`, `Job_salary_currency_format`, `Job_salary_disclosure_consistency` (DISCLOSED needs currency + period + an amount; NEGOTIABLE/NOT_DISCLOSED allow no amounts or currency; NULL disclosure means all structured columns NULL). Migration `add_structured_salary` (additive, SQL only).
 - `JobSource.type` limited to six values by a Postgres enum.
 - Empty-string defaults on `salary`/`experience` and `{}` on `skills` keep reads free of null handling.
 - Case-insensitive email uniqueness is handled by lower-casing in the app (Zod, Phase 5+), not a DB rule.
@@ -111,6 +117,10 @@ For checking only. `prisma/migrations/` is the source of truth.
 CREATE TYPE "JobSourceType" AS ENUM
   ('GOVERNMENT','COMPANY','UNIVERSITY','NGO','PORTAL','OTHER');
 
+CREATE TYPE "SalaryPeriod" AS ENUM ('MONTHLY','YEARLY','HOURLY');
+CREATE TYPE "SalaryDisclosure" AS ENUM ('DISCLOSED','NEGOTIABLE','NOT_DISCLOSED');
+-- plus the four salary CHECK constraints: see prisma/migrations/*_add_structured_salary/migration.sql
+
 CREATE TABLE "JobSource" (
   "id"   integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   "name" text NOT NULL,
@@ -127,6 +137,11 @@ CREATE TABLE "Job" (
   "location"     text NOT NULL,
   "description"  text NOT NULL,
   "salary"       text NOT NULL DEFAULT '',
+  "salaryMin"        numeric(12,2),
+  "salaryMax"        numeric(12,2),
+  "salaryCurrency"   char(3),
+  "salaryPeriod"     "SalaryPeriod",
+  "salaryDisclosure" "SalaryDisclosure",
   "experience"   text NOT NULL DEFAULT '',
   "skills"       text[] NOT NULL DEFAULT '{}',
   "deadline"     timestamptz,

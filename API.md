@@ -2,6 +2,8 @@
 
 Read-only JSON API. No authentication, no pagination.
 
+Job objects carry both the legacy `salary` text and five structured salary fields; see [Salary](#salary).
+
 ## Running locally
 
 ```bash
@@ -62,7 +64,12 @@ Values are trimmed; empty/whitespace-only values are ignored. A NUL character (`
       "category": "Software",
       "location": "Dhaka",
       "description": "builds APIs",
-      "salary": "",
+      "salary": "Tk 70,000 - 110,000",
+      "salaryMin": "70000",
+      "salaryMax": "110000",
+      "salaryCurrency": "BDT",
+      "salaryPeriod": "MONTHLY",
+      "salaryDisclosure": "DISCLOSED",
       "experience": "",
       "skills": [],
       "deadline": null,
@@ -109,6 +116,39 @@ Errors:
 { "error": { "message": "Job not found" } }
 ```
 (404)
+
+## Salary
+
+Each job has two salary representations that coexist:
+
+- `salary` (string): the **legacy free-text display string** (e.g. `"Tk 35,500 - 67,010 (Grade 9)"`). Unchanged, always present, may be empty.
+- Five **structured** fields, all nullable:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `salaryMin`, `salaryMax` | decimal string or `null` | `DECIMAL(12,2)`. **Serialized as JSON strings** (e.g. `"70000"`, `"15.5"`) so no float rounding happens; use a decimal library, or `Number()` for display only. |
+| `salaryCurrency` | `null` or 3 uppercase letters | `BDT`, `USD`, `EUR`, ... Not limited to BDT; the format is validated, the code list is not. |
+| `salaryPeriod` | `MONTHLY` \| `YEARLY` \| `HOURLY` \| `null` | |
+| `salaryDisclosure` | `DISCLOSED` \| `NEGOTIABLE` \| `NOT_DISCLOSED` \| `null` | `null` = legacy/unknown row: use the `salary` text. |
+
+Rules (enforced by DB CHECK constraints and mirrored by `salarySchema` in `lib/schemas.ts`):
+
+- Amounts are never negative; `salaryMin <= salaryMax` when both are set.
+- `DISCLOSED` requires `salaryCurrency`, `salaryPeriod` and at least one of `salaryMin`/`salaryMax` (open-ended ranges are allowed).
+- `NEGOTIABLE` and `NOT_DISCLOSED` must have no amounts and no currency.
+- `null` disclosure requires every structured field to be `null`.
+
+> **Demo data:** all seeded salaries are synthetic. BDT ranges are copied from the demo `salary` text (government "Grade N" labels are not amounts). USD/EUR, hourly, yearly, negotiable and not-disclosed rows are invented examples, and for those the seed also rewrites the legacy text so the two agree. Three jobs remain legacy rows (all structured fields `null`). None of it is verified employer information.
+
+Example (`GET /api/jobs/{id}`, a remote job paid hourly in USD; other fields omitted):
+
+```json
+{ "data": { "salary": "USD 15 - 25 / hour (demo)", "salaryMin": "15", "salaryMax": "25",
+  "salaryCurrency": "USD", "salaryPeriod": "HOURLY", "salaryDisclosure": "DISCLOSED" } }
+```
+
+Negotiable: `"salary": "Negotiable"`, amounts/currency/period `null`, `"salaryDisclosure": "NEGOTIABLE"`.
+Legacy row: `"salary": "Tk 45,000 - 70,000"` with all five structured fields `null`.
 
 ## GET /api/sources
 

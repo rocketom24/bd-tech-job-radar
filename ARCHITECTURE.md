@@ -122,7 +122,14 @@ User      1 --- many Usage
 | category | tech role area, e.g. software engineering, data, networking |
 | location | |
 | description | |
-| salary | free text (postings say "negotiable", "as per scale", ranges) |
+| salary | **legacy** free text (postings say "negotiable", "as per scale", ranges); kept for display |
+| salaryMin / salaryMax | nullable `DECIMAL(12,2)` |
+| salaryCurrency | nullable `CHAR(3)`; not assumed to be BDT |
+| salaryPeriod | nullable enum `MONTHLY` / `YEARLY` / `HOURLY` |
+| salaryDisclosure | nullable enum `DISCLOSED` / `NEGOTIABLE` / `NOT_DISCLOSED`; `null` = legacy row |
+
+Structured salary was added **beside** the text, not instead of it, so existing rows and the API stay compatible and nothing is invented for legacy records. Consistency is enforced twice: Postgres CHECK constraints (migration `add_structured_salary`; Prisma cannot express CHECKs, so they live in the SQL only) and `salarySchema` in `lib/schemas.ts`. See [API.md](API.md#salary).
+
 | experience | free text |
 | skills | list of skills |
 | deadline | **nullable**: many real postings have none |

@@ -16,6 +16,18 @@ enum JobSourceType {
   OTHER
 }
 
+enum SalaryPeriod {
+  MONTHLY
+  YEARLY
+  HOURLY
+}
+
+enum SalaryDisclosure {
+  DISCLOSED
+  NEGOTIABLE
+  NOT_DISCLOSED
+}
+
 model JobSource {
   id   Int           @id @default(autoincrement())
   name String
@@ -25,21 +37,28 @@ model JobSource {
 }
 
 model Job {
-  id           Int       @id @default(autoincrement())
-  title        String
-  organization String
-  sector       String
-  category     String
-  location     String
-  description  String
-  salary       String    @default("")
-  experience   String    @default("")
-  skills       String[]  @default([])
-  deadline     DateTime? @db.Timestamptz
-  sourceId     Int
-  sourceUrl    String
-  verified     Boolean   @default(false)
-  createdAt    DateTime  @default(now()) @db.Timestamptz
+  id               Int               @id @default(autoincrement())
+  title            String
+  organization     String
+  sector           String
+  category         String
+  location         String
+  description      String
+  salary           String            @default("") // legacy free-text display string; kept as is
+  // Structured salary. All nullable: null salaryDisclosure = legacy/unknown row.
+  // Cross-field rules are CHECK constraints in the migration SQL (not expressible here).
+  salaryMin        Decimal?          @db.Decimal(12, 2)
+  salaryMax        Decimal?          @db.Decimal(12, 2)
+  salaryCurrency   String?           @db.Char(3)
+  salaryPeriod     SalaryPeriod?
+  salaryDisclosure SalaryDisclosure?
+  experience       String            @default("")
+  skills           String[]          @default([])
+  deadline         DateTime?         @db.Timestamptz
+  sourceId         Int
+  sourceUrl        String
+  verified         Boolean           @default(false)
+  createdAt        DateTime          @default(now()) @db.Timestamptz
 
   source JobSource @relation(fields: [sourceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
