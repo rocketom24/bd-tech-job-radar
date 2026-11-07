@@ -155,7 +155,7 @@ Structured salary was added **beside** the text, not instead of it, so existing 
 | id | primary key |
 | email | unique; stored lower-cased |
 | passwordHash | nullable `scrypt$v1$N$r$p$salt$hash`; null = legacy user |
-| subscriptionStatus | status of a future subscription |
+| subscriptionStatus | `FREE` (default) or `PRO`; server-side authority, see Subscription entitlements |
 | createdAt | |
 
 ### Usage (forward-looking, table only)
@@ -233,6 +233,27 @@ Email + password, database-backed sessions, no external auth service. All logic 
 - Sessions: 32 random bytes -> `bdr_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` in production, 7 days, fixed). Only SHA-256(token) is stored in `Session`. Logout deletes the row; expired rows are deleted when seen. No background cleanup yet, so abandoned expired rows remain until used (`expiresAt` is indexed for a later sweep).
 - CSRF: `SameSite=Lax` + reject POSTs whose `Origin` host differs from `Host`. No CORS headers are added. No CSRF tokens (see API.md limitations).
 - Authentication only: job endpoints remain public; plans and usage are not enforced. Email verification and password reset are out of scope (no email infrastructure).
+
+---
+
+## Subscription entitlements (Phase 3)
+
+`lib/entitlements.ts` is the single place for plan rules. `getEntitlements(status, { jobViews, applyClicks })` is pure: it never queries the database, increments counters, creates sessions or changes a status.
+
+- FREE: 10 unique job-detail views, 3 Apply clicks. PRO: both unlimited (`limit: null`, `remaining: null`, `unlimited: true`). Listing/search is unlimited for both. Per account, no reset period.
+- Unique view = the same user viewing the same job repeatedly costs one credit. Apply click = a separate event with its own counter. Counting both is Phase 4.
+- Server-side authority: status is read from the authenticated `User` row, never from a request. Register ignores client-supplied status and always creates `FREE`; login does not touch it; no public endpoint changes it.
+- Fail closed: an unknown status or a negative/non-integer count throws `RangeError` rather than being clamped, so bad data can neither grant PRO nor create extra credits. Callers must treat the throw as a denial or a server error.
+- `remaining` is never negative; `allowed` means "one more use is permitted now".
+- Connected in Phase 4: `POST /api/jobs/[id]/view`, `POST /api/jobs/[id]/apply` and `GET /api/me/usage` call the engine with counts read from `JobView` / `ApplyClick`. No payments exist; PRO is set manually in the database.
+
+### Usage tracking and concurrency (Phase 4)
+
+- `JobView` (unique `(userId, jobId)`) = unique views; `ApplyClick` (no uniqueness) = one row per click. Counts are `COUNT(*)` on those tables; there is no in-memory or Redis counter.
+- `lib/usage.ts#withUserLock` opens a Prisma interactive transaction and runs a parameterised `SELECT ... FROM "User" WHERE id = $1 FOR UPDATE`. The row lock is held until commit, so a second request from the same user blocks until the first has inserted; it then counts and sees the new row. Different users never contend. READ COMMITTED is sufficient because each statement after the lock sees everything the previous holder committed.
+- The plan is read from the locked row, so a status change cannot slip in mid-check. Works through `@prisma/adapter-neon` (interactive transactions run over its WebSocket pool).
+- The tests send simultaneous HTTP requests and check database counts; with `FOR UPDATE` removed all four concurrency tests fail, so they do exercise the lock.
+- Payment integration is not implemented.
 
 ---
 

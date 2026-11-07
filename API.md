@@ -20,7 +20,7 @@ npm run test:api                       # against http://localhost:3000
 BASE_URL=http://localhost:3210 npm run test:api
 ```
 
-They expect the seeded development database (25 jobs, 5 sources; `npx prisma db seed`). `tests/auth.test.mjs` creates users named `authtest-*@example.test` in that database and deletes only those afterwards (sessions cascade); it runs one SQL UPDATE (via `@neondatabase/serverless`, a dev dependency) to expire a session. `tests/db-failure.test.mjs` also starts its own temporary dev server (port 3299, separate build dir) with an unreachable `DATABASE_URL` to check that failures return a generic 500 and log no credentials.
+They expect the seeded development database (25 jobs, 5 sources; `npx prisma db seed`). `tests/auth.test.mjs` creates users named `authtest-*@example.test` in that database and deletes only those afterwards (sessions cascade); it runs one SQL UPDATE (via `@neondatabase/serverless`, a dev dependency) to expire a session. `tests/usage.test.mjs` creates `usagetest-*@example.test` users (their JobView/ApplyClick rows cascade), briefly inserts one job titled `usagetest-bad-url`, and runs real simultaneous requests for the concurrency checks; `npm run test:api` uses `--test-concurrency=1` so test files never overlap. `tests/db-failure.test.mjs` also starts its own temporary dev server (port 3299, separate build dir) with an unreachable `DATABASE_URL` to check that failures return a generic 500 and log no credentials.
 
 Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Import), keep `baseUrl` = `http://localhost:3000`, and run the collection with the Collection Runner. Each request has test scripts.
 
@@ -35,9 +35,11 @@ Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Impo
 | 200 | Success |
 | 201 | Registered |
 | 400 | Invalid query parameter, path id or request body |
+| 422 | Job has no valid application URL (`APPLY_URL_UNAVAILABLE`) |
 | 401 | Not authenticated / invalid credentials |
 | 403 | Cross-origin request rejected (auth POSTs) |
 | 404 | Job not found |
+| 429 | FREE quota used up (`VIEW_LIMIT_REACHED`, `APPLY_LIMIT_REACHED`) |
 | 409 | Email already registered |
 | 500 | Unexpected server error |
 
@@ -193,6 +195,10 @@ Deletes the session behind the cookie and clears it. Always 200, including when 
 
 200 `{ "data": <safe user> }` for a valid session. 401 `{ "error": { "message": "Not authenticated" } }` for no cookie, unknown token or expired session (an expired session row is deleted when seen).
 
+### Subscription status
+
+`subscriptionStatus` is `"FREE"` or `"PRO"`. It always comes from the database row of the authenticated user. Every new account is `FREE`: register ignores any `subscriptionStatus` (or similar) field in the body, and login never modifies it. There is no endpoint to change it and no payment system, so a user cannot upgrade themselves. FREE allows 10 unique job-detail views and 3 Apply clicks per account; PRO is unlimited; listing and searching are unlimited for both. These limits are defined in `lib/entitlements.ts` and enforced by the usage endpoints below (Phase 4). Limits are lifetime per account; there is no daily or monthly reset.
+
 ### Limitations
 
 - No email verification and no password reset: there is no email delivery infrastructure yet. A forgotten password cannot be recovered.
@@ -201,6 +207,41 @@ Deletes the session behind the cookie and clears it. Always 200, including when 
 - CSRF: `SameSite=Lax` plus the Origin check above. Requests without an `Origin` header are not checked, and no CSRF token is used; acceptable while every state-changing endpoint takes a JSON body and no CORS is enabled. Revisit when a frontend and other mutating endpoints exist.
 - Register reveals whether an email is taken (409). Login does not (generic 401, same hashing work either way).
 - Plain HTTP in development: the cookie is not `Secure` outside production.
+
+## Usage tracking (Phase 4)
+
+All three endpoints require the `bdr_session` cookie. Identity and plan always come from the session and the database: any `userId`, `subscriptionStatus` or URL in a request body is ignored. The usage endpoints use stable error codes, `{ "error": { "code": string, "message": string } }`, and `{ "success": true, ... }` successes (shapes below). POSTs also apply the cross-origin check (403). No payment system exists, so a FREE user cannot upgrade.
+
+### POST /api/jobs/{id}/view
+
+Records a **unique** job-detail view: one per user per job. No body.
+
+- 200 `{ "success": true, "viewed": true, "alreadyViewed": false }` on the first view; `alreadyViewed: true` for a repeat (nothing is consumed, and repeats stay allowed after the limit is reached).
+- 429 `{ "error": { "code": "VIEW_LIMIT_REACHED", "message": "You have reached your free job-view limit." } }` for a new job when a FREE user already viewed 10.
+- 400 `INVALID_JOB_ID`, 401 `UNAUTHENTICATED`, 404 `JOB_NOT_FOUND`, 403 `INVALID_SUBSCRIPTION` (stored plan is not FREE/PRO; fails closed), 500 `INTERNAL_ERROR`.
+
+### POST /api/jobs/{id}/apply
+
+Records one Apply click and returns the job's stored `sourceUrl`. Every success counts, including repeats for the same job. No body; a client-supplied URL is ignored.
+
+- 200 `{ "success": true, "applyUrl": "https://...", "remaining": 2 }` (`remaining` is `null` for PRO).
+- 429 `{ "error": { "code": "APPLY_LIMIT_REACHED", "message": "You have reached your free Apply-click limit." } }`; no event is stored.
+- 422 `APPLY_URL_UNAVAILABLE` when `sourceUrl` is not an http(s) URL; no event is stored.
+- 400, 401, 403, 404, 500 as above.
+
+### GET /api/me/usage
+
+```json
+{ "success": true, "data": { "subscriptionStatus": "FREE",
+  "jobViews":    { "used": 4, "limit": 10, "remaining": 6, "unlimited": false },
+  "applyClicks": { "used": 1, "limit": 3,  "remaining": 2, "unlimited": false } } }
+```
+
+PRO: `limit` and `remaining` are `null`, `unlimited` is `true`. Counts are read from `JobView` / `ApplyClick` for the session user only.
+
+### Concurrency
+
+Each view/apply runs in a transaction that first locks the user's row (`SELECT ... FOR UPDATE`), so simultaneous requests from one account are serialized and the count, quota check and insert cannot interleave. `JobView` also has a unique `(userId, jobId)` index. See ARCHITECTURE.md.
 
 ## GET /api/sources
 

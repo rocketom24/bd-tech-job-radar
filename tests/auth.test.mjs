@@ -188,3 +188,28 @@ test("logout only ends the current session", async () => {
 test("job and source endpoints stay public", async () => {
   for (const p of ["/api/jobs", "/api/sources"]) assert.equal((await fetch(BASE + p)).status, 200);
 });
+
+test("subscription: registration is always FREE, client-supplied status is ignored", async () => {
+  for (const extra of [{ subscriptionStatus: "PRO" }, { subscription: "PRO", plan: "PRO", role: "admin" }]) {
+    const email = newEmail();
+    const r = await call("/api/auth/register", { body: { email, password: PASSWORD, ...extra } });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.data.subscriptionStatus, "FREE");
+    assert.equal((await me(r.cookie)).body.data.subscriptionStatus, "FREE");
+    const [row] = await sql(`SELECT "subscriptionStatus" FROM "User" WHERE email = $1`, [email]);
+    assert.equal(row.subscriptionStatus, "FREE");
+  }
+});
+
+test("subscription: login and /me report the database value and never change it", async () => {
+  const email = newEmail();
+  await register(email);
+  await sql(`UPDATE "User" SET "subscriptionStatus" = 'PRO' WHERE email = $1`, [email]); // scoped to this test user
+  // a client-supplied status on login must not matter either way
+  const login = await call("/api/auth/login", { body: { email, password: PASSWORD, subscriptionStatus: "FREE" } });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.data.subscriptionStatus, "PRO");
+  assert.equal((await me(login.cookie)).body.data.subscriptionStatus, "PRO");
+  const [row] = await sql(`SELECT "subscriptionStatus" FROM "User" WHERE email = $1`, [email]);
+  assert.equal(row.subscriptionStatus, "PRO");
+});

@@ -47,7 +47,7 @@ User      1 ---< Usage
 | id | integer identity | NO | **PK** |
 | email | text | NO | **UNIQUE**; app stores it trimmed + lower-cased |
 | passwordHash | text | YES | scrypt, `scrypt$v1$N$r$p$salt$hash`; NULL for users created before auth |
-| subscriptionStatus | text | NO, default `'FREE'` | not a DB enum yet: values undecided |
+| subscriptionStatus | text | NO, default `'FREE'` | not a DB enum; the app accepts only `FREE`/`PRO` (`lib/entitlements.ts`), new users are `FREE`, set server-side only |
 | createdAt | timestamptz | NO, default `now()` | |
 
 ### Session (migration `add_auth_sessions`, additive)
@@ -67,6 +67,26 @@ User      1 ---< Usage
 | userId | integer | NO | **FK** -> User.id |
 | endpoint | text | NO | |
 | createdAt | timestamptz | NO, default `now()` | |
+
+### JobView (migration `add_job_views_apply_clicks`, additive)
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | integer identity | NO | **PK** |
+| userId | integer | NO | **FK** -> User.id, ON DELETE CASCADE |
+| jobId | integer | NO | **FK** -> Job.id, ON DELETE CASCADE, indexed |
+| createdAt | timestamptz | NO, default `now()` | |
+
+`UNIQUE (userId, jobId)`: one row per user per job = a unique view.
+
+### ApplyClick (same migration)
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | integer identity | NO | **PK** |
+| userId | integer | NO | **FK** -> User.id, ON DELETE CASCADE |
+| jobId | integer | NO | **FK** -> Job.id, ON DELETE CASCADE, indexed |
+| createdAt | timestamptz | NO, default `now()` | |
+
+Index `(userId, createdAt)`. Deliberately **not** unique: each click is a row. The older `Usage` table is unused by Phase 4 (generic endpoint log; it cannot express uniqueness).
 
 ## Foreign keys
 
@@ -201,4 +221,5 @@ CREATE INDEX "Usage_userId_createdAt_idx" ON "Usage"("userId","createdAt");
 ## Open decisions (not blocking)
 
 - `Job.sourceUrl` is not UNIQUE. Dedup is Day 2; add a unique/dedup key then.
-- `subscriptionStatus` becomes an enum once real plan names exist.
+- `subscriptionStatus` stays `text` for now (values `FREE`, `PRO`; no migration in Phase 3). Make it an enum or add a CHECK constraint once the plan list is stable. Unknown values in existing rows are rejected by the entitlement engine, not granted access.
+- Phase 4 must decide how to store unique job views (a per-user/per-job record) and Apply clicks; the existing `Usage` table (`endpoint` + timestamp) cannot express uniqueness by itself. FREE limits: 10 unique views, 3 Apply clicks, per account, no reset.

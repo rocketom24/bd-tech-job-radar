@@ -11,6 +11,10 @@
     {
       "key": "authEmail",
       "value": ""
+    },
+    {
+      "key": "jobId",
+      "value": "7"
     }
   ],
   "item": [
@@ -803,6 +807,101 @@
                 "api",
                 "auth",
                 "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "View job (counts one unique view)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 (or 429 once the FREE view limit is used)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 429]));",
+                  "if (pm.response.code === 200) pm.test(\"viewed\", () => pm.expect(pm.response.json()).to.include({ success: true, viewed: true }));",
+                  "else pm.test(\"limit code\", () => pm.expect(pm.response.json().error.code).to.eql(\"VIEW_LIMIT_REACHED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs/{{jobId}}/view",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "jobs",
+                "{{jobId}}",
+                "view"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Apply to job (counts one Apply click)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 (or 429 once the FREE Apply limit is used)\", () => pm.expect(pm.response.code).to.be.oneOf([200, 429]));",
+                  "if (pm.response.code === 200) pm.test(\"original URL returned\", () => pm.expect(pm.response.json().applyUrl).to.match(/^https?:\\/\\//));",
+                  "else pm.test(\"limit code\", () => pm.expect(pm.response.json().error.code).to.eql(\"APPLY_LIMIT_REACHED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jobs/{{jobId}}/apply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "jobs",
+                "{{jobId}}",
+                "apply"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get my usage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"shape\", () => { pm.expect(d).to.have.all.keys(\"subscriptionStatus\", \"jobViews\", \"applyClicks\"); pm.expect(d.jobViews).to.have.all.keys(\"used\", \"limit\", \"remaining\", \"unlimited\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/me/usage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me",
+                "usage"
               ]
             }
           }

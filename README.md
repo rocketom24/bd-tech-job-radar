@@ -12,7 +12,7 @@ A job discovery and aggregation backend focused on Bangladesh's technology job m
 - Idempotent seed script with **25 synthetic demo jobs** and 5 demo sources. All records are demonstration data; every URL uses `example.com`. They are not real vacancies.
 - HTTP integration tests and a Postman collection.
 
-What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), email verification, password reset, subscriptions or usage enforcement (`Usage` is unused; nothing restricts anything by plan), pagination, full-text search. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
+What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), email verification, password reset, subscription enforcement (the FREE/PRO rules exist in `lib/entitlements.ts` but no API uses them yet; `Usage` is unused; nothing restricts anything by plan; no payments), pagination, full-text search. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
 
 ## Tech stack
 
@@ -38,6 +38,7 @@ app/api/auth/*/route.ts      register, login, logout, me
 lib/auth.ts                  scrypt hashing, sessions, cookie, Origin check
 lib/prisma.ts                shared Prisma client (Neon adapter, DATABASE_URL)
 lib/schemas.ts               Zod query schema
+lib/entitlements.ts          FREE/PRO limits (pure functions, not yet wired to any API)
 lib/log.ts                   safe error logging
 prisma/schema.prisma         data model
 prisma/migrations/           SQL migrations (committed)
@@ -144,11 +145,21 @@ Full parameter and response reference: [API.md](API.md).
 | --- | --- |
 | `JobSource` | where jobs come from (`GOVERNMENT`, `COMPANY`, `UNIVERSITY`, `NGO`, `PORTAL`, `OTHER`) |
 | `Job` | a posting; belongs to one `JobSource` (`ON DELETE RESTRICT`); `deadline` and the structured salary fields are nullable; legacy `salary` text kept |
-| `User` | account: unique `email`, nullable scrypt `passwordHash`, `subscriptionStatus` (not enforced yet) |
+| `User` | account: unique `email`, nullable scrypt `passwordHash`, `subscriptionStatus` (`FREE` default; rules in `lib/entitlements.ts`, not enforced yet) |
 | `Session` | login session: SHA-256 `tokenHash` (unique), `expiresAt`; cascade-deleted with its user |
 | `Usage` | placeholder for future per-user call tracking; belongs to a `User` |
 
 Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema is managed only through Prisma migrations in `prisma/migrations/`.
+
+## Subscription rules (Phase 3)
+
+| | FREE (default) | PRO |
+|---|---|---|
+| Job listing and search | unlimited | unlimited |
+| Unique job-detail views | **10** per account | unlimited |
+| Apply clicks | **3** per account | unlimited |
+
+Limits are lifetime per account; no daily or monthly reset is defined. A *unique job view* means viewing the same job again costs nothing. An *Apply click* is its own event, counted separately. `lib/entitlements.ts` evaluates these rules from a trusted status and usage counts. Phase 4 enforces them server-side via `POST /api/jobs/{id}/view`, `POST /api/jobs/{id}/apply` and `GET /api/me/usage` (login required; row-lock concurrency protection, see [API.md](API.md#usage-tracking-phase-4)). `GET /api/jobs` and `GET /api/jobs/{id}` stay public and unmetered. There is no payment processing; PRO can only be set directly in the database. Details: [ARCHITECTURE.md](ARCHITECTURE.md#subscription-entitlements-phase-3).
 
 ## Current limitations
 
@@ -157,7 +168,7 @@ Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema 
 - Salary filtering/sorting is not implemented; structured salary is returned, not queryable. There is no salary write endpoint yet, so `salarySchema` is exercised by the seed and tests only.
 - `keyword` searches `title`, `organization` and `description` only. It does **not** search the `skills` array.
 - Substring search uses `ILIKE` without an index (fine at this size).
-- Authentication exists, but job endpoints are intentionally still public. No authorization, rate limiting, subscription or usage enforcement.
+- Authentication exists, but job endpoints are intentionally still public. Only the usage endpoints require login and enforce quotas; no rate limiting.
 - No email verification and no password reset (no email delivery infrastructure yet).
 - No frontend; `/` is the unmodified Next.js starter page.
 - `Job.sourceUrl` is not unique, so there is no deduplication yet.
