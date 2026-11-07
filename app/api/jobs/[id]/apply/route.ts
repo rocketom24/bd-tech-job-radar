@@ -12,7 +12,7 @@ function isHttpUrl(value: string) {
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const auth = await authenticate(request);
+    const auth = await authenticate(request, "apply");
     if (auth.response) return auth.response;
     const jobId = parseJobId((await params).id);
     if (jobId === null) return apiError("INVALID_JOB_ID", "Invalid job id: must be a positive integer", 400);

@@ -1,12 +1,14 @@
 import { forbidden, getCurrentUser, isForeignOrigin } from "@/lib/auth";
+import { apiError } from "@/lib/api-error";
+import { getEntitlements } from "@/lib/entitlements";
 import { logError } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, type LimitName } from "@/lib/rate-limit";
 import type { Prisma } from "@/generated/prisma/client";
 
 const MAX_INT4 = 2_147_483_647;
 
-export const apiError = (code: string, message: string, status: number) =>
-  Response.json({ error: { code, message } }, { status });
+export { apiError };
 
 export const internalError = (route: string, error: unknown) => {
   logError(route, error);
@@ -19,11 +21,13 @@ export function parseJobId(raw: string): number | null {
   return Number.isSafeInteger(id) && id <= MAX_INT4 ? id : null;
 }
 
-/** Shared guard for the POST usage routes: CSRF check, then the session user. */
-export async function authenticate(request: Request) {
+/** Shared guard for the POST usage routes: CSRF check, session user, then the per-user rate limit. */
+export async function authenticate(request: Request, limit: Extract<LimitName, "view" | "apply">) {
   if (isForeignOrigin(request)) return { response: forbidden() };
   const user = await getCurrentUser();
   if (!user) return { response: apiError("UNAUTHENTICATED", "Not authenticated", 401) };
+  const limited = await rateLimit(limit, user.id);
+  if (limited) return { response: limited };
   return { user };
 }
 
@@ -54,4 +58,21 @@ export async function withUserLock<T>(
     },
     { maxWait: 10_000, timeout: 15_000 },
   );
+}
+
+/**
+ * The one place a job-detail view is authorised and recorded (used by GET /api/jobs/[id] and POST .../view).
+ * Under the user lock: already viewed -> "already" (free, never counts again); else quota check, then insert.
+ * Returns null if the user no longer exists. Throws RangeError on an unknown plan (fail closed).
+ */
+export async function recordJobView(userId: number, jobId: number) {
+  return withUserLock(userId, async (tx, status) => {
+    if (await tx.jobView.findUnique({ where: { userId_jobId: { userId, jobId } }, select: { id: true } })) {
+      getEntitlements(status, { jobViews: 0, applyClicks: 0 }); // fail closed on an unknown plan
+      return "already" as const;
+    }
+    if (!getEntitlements(status, await countUsage(tx, userId)).jobViews.allowed) return "limit" as const;
+    await tx.jobView.create({ data: { userId, jobId } });
+    return "created" as const;
+  });
 }

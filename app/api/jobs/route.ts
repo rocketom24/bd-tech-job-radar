@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { apiError } from "@/lib/api-error";
 import { logError } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { jobsQuerySchema } from "@/lib/schemas";
@@ -10,9 +11,7 @@ const FILTER_KEYS = ["keyword", "location", "category"] as const;
 // user-supplied % _ \ would act as wildcards. Escape them to get literal search.
 const literal = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 
-function badRequest(message: string, details?: unknown) {
-  return Response.json({ error: { message, details } }, { status: 400 });
-}
+const badRequest = (message: string, details?: unknown) => apiError("INVALID_QUERY", message, 400, details);
 
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -49,6 +48,7 @@ export async function GET(request: Request) {
   };
 
   try {
+    // Summary only: description and sourceUrl are detail fields (GET /api/jobs/[id], quota-gated / Apply).
     const data = await prisma.job.findMany({
       where,
       select: {
@@ -58,7 +58,6 @@ export async function GET(request: Request) {
         sector: true,
         category: true,
         location: true,
-        description: true,
         salary: true,
         salaryMin: true,
         salaryMax: true,
@@ -69,7 +68,6 @@ export async function GET(request: Request) {
         skills: true,
         deadline: true,
         sourceId: true,
-        sourceUrl: true,
         verified: true,
         createdAt: true,
       },
@@ -79,6 +77,6 @@ export async function GET(request: Request) {
     return Response.json({ data });
   } catch (error) {
     logError("GET /api/jobs", error);
-    return Response.json({ error: { message: "Internal server error" } }, { status: 500 });
+    return apiError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }

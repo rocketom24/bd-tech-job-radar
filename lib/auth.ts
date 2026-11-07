@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from "node:crypto";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import { apiError } from "@/lib/api-error";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_COOKIE = "bdr_session";
@@ -92,12 +93,14 @@ export async function destroySession() {
 
 // ---- Request helpers ---------------------------------------------------------------
 /**
- * CSRF defence in depth on top of SameSite=Lax: a browser request carrying an Origin header
- * from another host is rejected. Requests without Origin (curl, tests, server-to-server) pass.
+ * CSRF defence in depth on top of SameSite=Lax. Browsers always send Origin on cross-origin
+ * POSTs, so: a different (or opaque "null") Origin is rejected, and with no Origin a browser's
+ * Sec-Fetch-Site: cross-site is rejected. Requests with neither header (curl, Postman, tests,
+ * server-to-server) pass: they carry no ambient browser cookies an attacker could ride.
  */
 export function isForeignOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin) return false;
+  if (!origin) return request.headers.get("sec-fetch-site") === "cross-site";
   try {
     return new URL(origin).host !== request.headers.get("host");
   } catch {
@@ -105,24 +108,26 @@ export function isForeignOrigin(request: Request) {
   }
 }
 
-export const forbidden = () =>
-  Response.json({ error: { message: "Cross-origin request rejected" } }, { status: 403 });
+export const forbidden = () => apiError("FORBIDDEN_ORIGIN", "Cross-origin request rejected", 403);
 
-/** Parses a JSON body with a schema. Returns { data } or a ready 400 { response }. */
+const MAX_BODY_CHARS = 10_000; // auth bodies are tiny; refuse oversized ones before parsing
+
+/** Parses a JSON body with a schema. Returns { data } or a ready 4xx { response }. */
 export async function parseBody<T extends z.ZodType>(request: Request, schema: T) {
   let json: unknown;
   try {
-    json = await request.json();
+    const text = await request.text();
+    if (text.length > MAX_BODY_CHARS) {
+      return { response: apiError("PAYLOAD_TOO_LARGE", "Request body is too large", 413) };
+    }
+    json = JSON.parse(text);
   } catch {
-    return { response: Response.json({ error: { message: "Request body must be valid JSON" } }, { status: 400 }) };
+    return { response: apiError("INVALID_JSON", "Request body must be valid JSON", 400) };
   }
   const parsed = schema.safeParse(json);
   if (!parsed.success) {
     return {
-      response: Response.json(
-        { error: { message: "Invalid request body", details: z.flattenError(parsed.error).fieldErrors } },
-        { status: 400 },
-      ),
+      response: apiError("VALIDATION_ERROR", "Invalid request body", 400, z.flattenError(parsed.error).fieldErrors),
     };
   }
   return { data: parsed.data as z.infer<T> };

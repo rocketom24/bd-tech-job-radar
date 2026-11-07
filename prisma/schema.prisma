@@ -135,3 +135,15 @@ model ApplyClick {
   @@index([userId, createdAt])
   @@index([jobId])
 }
+
+// Fixed-window counters for rate limiting, shared by every app instance. `key` is an HMAC
+// pseudonym (never a raw IP or email). One atomic upsert per check; expired windows are purged
+// opportunistically by lib/rate-limit.ts.
+model RateLimit {
+  key         String
+  windowStart DateTime @db.Timestamptz
+  count       Int
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}

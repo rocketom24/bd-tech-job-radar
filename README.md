@@ -6,13 +6,16 @@ A job discovery and aggregation backend focused on Bangladesh's technology job m
 
 **Backend-focused demo (Day 1 foundation).** What exists today:
 
-- A PostgreSQL schema (Neon) with Prisma migrations and four tables. Jobs carry a legacy `salary` text plus structured salary fields (see [API.md](API.md#salary)).
-- Three read-only, public JSON endpoints: `GET /api/jobs`, `GET /api/jobs/{id}`, `GET /api/sources`.
+- A PostgreSQL schema (Neon) with Prisma migrations and eight tables (`JobSource`, `Job`, `User`, `Session`, `Usage`, `JobView`, `ApplyClick`, `RateLimit`). Jobs carry a legacy `salary` text plus structured salary fields (see [API.md](API.md#salary)).
+- Public JSON endpoints: `GET /api/jobs` (summary list/search, no `description`/`sourceUrl`) and `GET /api/sources`. `GET /api/jobs/{id}` (full detail) requires login and consumes the view quota.
 - Email + password authentication with database-backed sessions: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` (see [API.md](API.md#authentication)).
 - Idempotent seed script with **25 synthetic demo jobs** and 5 demo sources. All records are demonstration data; every URL uses `example.com`. They are not real vacancies.
 - HTTP integration tests and a Postman collection.
 
-What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), email verification, password reset, subscription enforcement (the FREE/PRO rules exist in `lib/entitlements.ts` but no API uses them yet; `Usage` is unused; nothing restricts anything by plan; no payments), pagination, full-text search. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
+- FREE/PRO entitlements (`lib/entitlements.ts`) enforced server-side on `POST /api/jobs/{id}/view`, `POST /api/jobs/{id}/apply` and `GET /api/me/usage` (login required, lifetime quotas, row-lock concurrency protection).
+- Database-backed rate limiting, Origin/CSRF checks, security headers and one error format (`{ error: { code, message } }`) across every endpoint (Phase 5 hardening).
+
+What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), email verification, password reset, **payments of any kind (production payment integration is not implemented; PRO can only be set directly in the database)**, pagination, full-text search. The code has not been deployed or tested against a production database. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
 
 ## Tech stack
 
@@ -35,16 +38,20 @@ app/api/jobs/route.ts        GET /api/jobs (filters)
 app/api/jobs/[id]/route.ts   GET /api/jobs/{id}
 app/api/sources/route.ts     GET /api/sources
 app/api/auth/*/route.ts      register, login, logout, me
+app/api/jobs/[id]/view|apply  usage-tracking POSTs (app/api/me/usage: GET usage)
 lib/auth.ts                  scrypt hashing, sessions, cookie, Origin check
 lib/prisma.ts                shared Prisma client (Neon adapter, DATABASE_URL)
-lib/schemas.ts               Zod query schema
-lib/entitlements.ts          FREE/PRO limits (pure functions, not yet wired to any API)
+lib/schemas.ts               Zod schemas (query, salary, auth)
+lib/entitlements.ts          FREE/PRO limits (pure functions)
+lib/usage.ts                 view/apply guard, per-user row lock, usage counts
+lib/rate-limit.ts            Postgres-backed rate limiter (HMAC pseudonyms)
+lib/api-error.ts             the single error response shape
 lib/log.ts                   safe error logging
 prisma/schema.prisma         data model
 prisma/migrations/           SQL migrations (committed)
 prisma/seed.ts               demo seed data
 prisma.config.ts             Prisma CLI config (DIRECT_URL, seed command)
-tests/                       API and DB-failure tests
+tests/                       API, auth, usage/concurrency, security/rate-limit, DB-failure tests
 postman/                     Postman collection
 ARCHITECTURE.md  DATABASE_DESIGN.md  API.md
 ```
@@ -70,7 +77,14 @@ Edit `.env` and set both variables from the Neon dashboard (Connect button):
 | `DATABASE_URL` | app runtime, seed script | **pooled** connection string (host contains `-pooler`) |
 | `DIRECT_URL` | Prisma CLI (`migrate`, `validate`, ...) | **direct** connection string (no `-pooler`) |
 
-`.env` is git-ignored. Never commit real connection strings.
+Also set (see `.env.example`):
+
+| Variable | Value |
+| --- | --- |
+| `RATE_LIMIT_SECRET` | **required**; random string of 32+ characters (`openssl rand -base64 48`), different per environment. Without it register/login/view/apply return 500. |
+| `TRUSTED_IP_HEADER` | optional; the header your hosting proxy overwrites with the client IP (Vercel: `x-real-ip`). Leave unset if unsure: all clients then share one rate-limit bucket. For local tests set `x-forwarded-for`. |
+
+`.env` is git-ignored. Never commit real connection strings or secrets.
 
 > **Warning: keep production credentials out of this project folder.**
 >
@@ -112,7 +126,7 @@ npm run test:api                         # against http://localhost:3000
 BASE_URL=http://localhost:3210 npm run test:api
 ```
 
-`tests/auth.test.mjs` writes test users (`authtest-*@example.test`) to the dev database and removes only those. The other tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/schemas.test.mjs` is pure (no server or database). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
+Tests need a dev server started with `RATE_LIMIT_SECRET` and `TRUSTED_IP_HEADER=x-forwarded-for` in `.env` (each test request sends its own fake IP so the per-IP limits do not interfere). A fixed rate-limit window can roll over mid-test; the tests wait on the database clock when fewer than 20 s are left. `tests/auth.test.mjs`, `usage.test.mjs` and `security.test.mjs` write test users (`authtest-*`, `usagetest-*`, `sectest-*@example.test`) and rate-limit rows to the **development** database and remove only those; `tests/security.test.mjs` takes about a minute. Set `NEXT_DIST_DIR=.next-verify` to run a second server beside one already on port 3000. The other tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/schemas.test.mjs` is pure (no server or database). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
 
 ## Production build
 
@@ -125,17 +139,20 @@ Provide `DATABASE_URL` (pooled) in the environment of the running server. Apply 
 
 ## API overview
 
-Job and source endpoints are read-only and public; auth endpoints are listed below. Success: `{ "data": ... }`. Error: `{ "error": { "message": ..., "details"?: ... } }`.
+Job and source endpoints are read-only and public; auth endpoints are listed below. Success: `{ "data": ... }` (usage endpoints add `success: true`). Error: `{ "error": { "code": ..., "message": ..., "details"?: ... } }`.
 
 | Endpoint | Description |
 | --- | --- |
 | `GET /api/jobs` | All jobs, newest first. Optional `keyword`, `location`, `category` filters. |
-| `GET /api/jobs/{id}` | One job including its source. 400 for an invalid id, 404 if missing. |
+| `GET /api/jobs/{id}` | Full job incl. description, source URL and source (login). FREE: 10 unique jobs, re-viewing is free, 429 `VIEW_LIMIT_REACHED` for an 11th new job; PRO unlimited. 401 / 400 / 404 otherwise. |
 | `GET /api/sources` | All sources, sorted by name. |
-| `POST /api/auth/register` | Create account (email + password >= 12 chars), start session. 201 / 400 / 409. |
+| `POST /api/auth/register` | Create account (email + password >= 12 chars), start session. 201 / 400 / 409 / 429. |
 | `POST /api/auth/login` | Start a session. 200, or generic 401. |
 | `POST /api/auth/logout` | End the current session; idempotent. |
 | `GET /api/auth/me` | Current user, or 401. |
+| `POST /api/jobs/{id}/view` | Record a unique job view (login). 429 at the FREE limit. |
+| `POST /api/jobs/{id}/apply` | Record an Apply click, return the source URL (login). |
+| `GET /api/me/usage` | Your usage and remaining quota (login). |
 
 Full parameter and response reference: [API.md](API.md).
 
@@ -145,9 +162,11 @@ Full parameter and response reference: [API.md](API.md).
 | --- | --- |
 | `JobSource` | where jobs come from (`GOVERNMENT`, `COMPANY`, `UNIVERSITY`, `NGO`, `PORTAL`, `OTHER`) |
 | `Job` | a posting; belongs to one `JobSource` (`ON DELETE RESTRICT`); `deadline` and the structured salary fields are nullable; legacy `salary` text kept |
-| `User` | account: unique `email`, nullable scrypt `passwordHash`, `subscriptionStatus` (`FREE` default; rules in `lib/entitlements.ts`, not enforced yet) |
+| `User` | account: unique `email`, nullable scrypt `passwordHash`, `subscriptionStatus` (`FREE` default; rules in `lib/entitlements.ts`, enforced by the usage endpoints) |
 | `Session` | login session: SHA-256 `tokenHash` (unique), `expiresAt`; cascade-deleted with its user |
-| `Usage` | placeholder for future per-user call tracking; belongs to a `User` |
+| `Usage` | unused generic log table; belongs to a `User` |
+| `JobView` / `ApplyClick` | unique job views (one per user and job) / one row per Apply click |
+| `RateLimit` | fixed-window rate-limit counters keyed by HMAC pseudonym |
 
 Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema is managed only through Prisma migrations in `prisma/migrations/`.
 
@@ -159,7 +178,7 @@ Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema 
 | Unique job-detail views | **10** per account | unlimited |
 | Apply clicks | **3** per account | unlimited |
 
-Limits are lifetime per account; no daily or monthly reset is defined. A *unique job view* means viewing the same job again costs nothing. An *Apply click* is its own event, counted separately. `lib/entitlements.ts` evaluates these rules from a trusted status and usage counts. Phase 4 enforces them server-side via `POST /api/jobs/{id}/view`, `POST /api/jobs/{id}/apply` and `GET /api/me/usage` (login required; row-lock concurrency protection, see [API.md](API.md#usage-tracking-phase-4)). `GET /api/jobs` and `GET /api/jobs/{id}` stay public and unmetered. There is no payment processing; PRO can only be set directly in the database. Details: [ARCHITECTURE.md](ARCHITECTURE.md#subscription-entitlements-phase-3).
+Limits are lifetime per account; no daily or monthly reset is defined. A *unique job view* means viewing the same job again costs nothing. An *Apply click* is its own event, counted separately. `lib/entitlements.ts` evaluates these rules from a trusted status and usage counts. Phase 4 enforces them server-side via `POST /api/jobs/{id}/view`, `POST /api/jobs/{id}/apply` and `GET /api/me/usage` (login required; row-lock concurrency protection, see [API.md](API.md#usage-tracking-phase-4)). `GET /api/jobs` stays public and unmetered (summaries only); `GET /api/jobs/{id}` requires login and counts a unique view (same quota as `POST /api/jobs/{id}/view`); Apply clicks are tracked separately. There is no payment processing; PRO can only be set directly in the database. Details: [ARCHITECTURE.md](ARCHITECTURE.md#subscription-entitlements-phase-3).
 
 ## Current limitations
 
@@ -168,7 +187,8 @@ Limits are lifetime per account; no daily or monthly reset is defined. A *unique
 - Salary filtering/sorting is not implemented; structured salary is returned, not queryable. There is no salary write endpoint yet, so `salarySchema` is exercised by the seed and tests only.
 - `keyword` searches `title`, `organization` and `description` only. It does **not** search the `skills` array.
 - Substring search uses `ILIKE` without an index (fine at this size).
-- Authentication exists, but job endpoints are intentionally still public. Only the usage endpoints require login and enforce quotas; no rate limiting.
+- The job list is intentionally public but returns summaries only. Full detail (`GET /api/jobs/{id}`) is login-gated and view-metered; `sourceUrl` is also returned by the Apply endpoint. See the limitations in [API.md](API.md).
+- Rate limiting is per IP / email / user in Postgres; there is no CAPTCHA, account lockout or WAF, and the IP bucket is only as trustworthy as `TRUSTED_IP_HEADER`.
 - No email verification and no password reset (no email delivery infrastructure yet).
 - No frontend; `/` is the unmodified Next.js starter page.
 - `Job.sourceUrl` is not unique, so there is no deduplication yet.

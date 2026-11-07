@@ -38,10 +38,11 @@ after(async () => {
 
 for (const path of ["/api/jobs", "/api/jobs/13", "/api/sources"]) {
   test(`DB down: ${path} -> generic 500, no leaks`, async () => {
-    const res = await fetch(`http://localhost:${PORT}${path}`);
+    // a (fake) session cookie forces the session lookup, which hits the dead DB; without one the gated route 401s before any query
+    const res = await fetch(`http://localhost:${PORT}${path}`, { headers: { cookie: "bdr_session=fake-token" } });
     const text = await res.text();
     assert.equal(res.status, 500);
-    assert.deepEqual(JSON.parse(text), { error: { message: "Internal server error" } });
+    assert.deepEqual(JSON.parse(text), { error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   });
 }
 

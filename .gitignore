@@ -46,7 +46,7 @@ next-env.d.ts
 /generated/
 
 # db-failure test dev build
-/.next-dbfail/
+/.next-*/
 
 # other secret-bearing files (.env* above already covers .env.*.credentials)
 *.credentials

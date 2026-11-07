@@ -8,6 +8,9 @@ import { after, test } from "node:test";
 import { neon } from "@neondatabase/serverless";
 import "dotenv/config";
 
+// Each call pretends to come from its own client IP so the per-IP rate limits (tests/security.test.mjs) never trip here.
+// Needs TRUSTED_IP_HEADER=x-forwarded-for in the dev server env (see .env.example).
+const fakeIp = () => `10.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const PASSWORD = "correct horse battery";
 const RUN = randomUUID().slice(0, 8);
@@ -17,12 +20,17 @@ const newEmail = () => `authtest-${RUN}-${++n}@example.test`;
 // Direct SQL over Neon's HTTP endpoint: one request, no child process, no retries. Always parameterised.
 const sql = neon(process.env.DATABASE_URL).query;
 
-after(() => sql(`DELETE FROM "User" WHERE email LIKE 'authtest-%@example.test'`));
+const STARTED = new Date().toISOString();
+after(async () => {
+  await sql(`DELETE FROM "User" WHERE email LIKE 'authtest-%@example.test'`);
+  // dev-database only: windows are at most 1 h long, so this removes just the rows these requests created (fake IPs)
+  await sql(`DELETE FROM "RateLimit" WHERE "windowStart" >= $1::timestamptz - interval '1 hour' AND key LIKE ANY (ARRAY['register:%', 'loginIp:%', 'loginEmail:%'])`, [STARTED]);
+});
 
 async function call(path, { method = "POST", body, cookie, headers = {} } = {}) {
   const res = await fetch(BASE + path, {
     method,
-    headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...(cookie ? { cookie } : {}), ...headers },
+    headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...(cookie ? { cookie } : {}), "x-forwarded-for": fakeIp(), ...headers },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
   const json = await res.json();

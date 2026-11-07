@@ -1,14 +1,34 @@
 // HTTP integration tests. Run a dev server first (npm run dev), then: npm run test:api
-// Target: BASE_URL (default http://localhost:3000). Read-only; needs the seeded dev database.
+// Target: BASE_URL (default http://localhost:3000). Needs the seeded dev database. The job-detail endpoint needs a login,
+// so these tests register one PRO user (apitest-*@example.test, deleted in after(); its JobView rows cascade).
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { randomUUID } from "node:crypto";
+import { after, before, test } from "node:test";
+import { neon } from "@neondatabase/serverless";
+import "dotenv/config";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
+const LIST_KEYS = ["category", "createdAt", "deadline", "experience", "id", "location", "organization", "salary", "salaryCurrency", "salaryDisclosure", "salaryMax", "salaryMin", "salaryPeriod", "sector", "skills", "sourceId", "title", "verified"];
 const JOB_KEYS = ["category", "createdAt", "deadline", "description", "experience", "id", "location", "organization", "salary", "salaryCurrency", "salaryDisclosure", "salaryMax", "salaryMin", "salaryPeriod", "sector", "skills", "sourceId", "sourceUrl", "title", "verified"];
 const SOURCE_KEYS = ["id", "name", "type", "url"];
 
-async function get(path) {
-  const res = await fetch(BASE + path);
+const sql = neon(process.env.DATABASE_URL).query;
+const STARTED = new Date().toISOString();
+const EMAIL = `apitest-${randomUUID().slice(0, 8)}@example.test`;
+let cookie;
+before(async () => {
+  const r = await fetch(BASE + "/api/auth/register", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.9.9.9" }, body: JSON.stringify({ email: EMAIL, password: "correct horse battery" }) });
+  assert.equal(r.status, 201);
+  cookie = r.headers.getSetCookie().find((c) => c.startsWith("bdr_session="))?.split(";")[0];
+  await sql(`UPDATE "User" SET "subscriptionStatus" = 'PRO' WHERE email = $1`, [EMAIL]);
+});
+after(async () => {
+  await sql(`DELETE FROM "User" WHERE email = $1`, [EMAIL]);
+  await sql(`DELETE FROM "RateLimit" WHERE "windowStart" >= $1::timestamptz - interval '1 hour' AND key LIKE ANY (ARRAY['register:%', 'view:%'])`, [STARTED]);
+});
+
+async function get(path, { auth = false } = {}) {
+  const res = await fetch(BASE + path, auth ? { headers: { cookie } } : undefined);
   const text = await res.text();
   let body;
   try { body = JSON.parse(text); } catch { assert.fail(`${path}: non-JSON response (${res.status}): ${text.slice(0, 200)}`); }
@@ -28,7 +48,7 @@ test("GET /api/jobs baseline", async () => {
   assert.equal(r.status, 200);
   assert.deepEqual(Object.keys(r.body), ["data"]);
   assert.equal(r.body.data.length, 25);
-  for (const j of r.body.data) assert.deepEqual(keys(j), JOB_KEYS);
+  for (const j of r.body.data) assert.deepEqual(keys(j), LIST_KEYS, "list is summary-only: no description/sourceUrl");
   const times = r.body.data.map((j) => Date.parse(j.createdAt));
   assert.deepEqual(times, [...times].sort((a, b) => b - a), "createdAt DESC");
 });
@@ -100,7 +120,7 @@ test("max-length values accepted", async () => {
 });
 
 test("GET /api/jobs/13", async () => {
-  const r = await get("/api/jobs/13");
+  const r = await get("/api/jobs/13", { auth: true });
   assert.equal(r.status, 200);
   assert.deepEqual(Object.keys(r.body), ["data"]);
   assert.deepEqual(keys(r.body.data), [...JOB_KEYS, "source"].sort());
@@ -110,14 +130,14 @@ test("GET /api/jobs/13", async () => {
 });
 
 test("GET /api/jobs/9999 -> 404", async () => {
-  const r = await get("/api/jobs/9999");
+  const r = await get("/api/jobs/9999", { auth: true });
   assertError(r, 404);
   assert.equal(r.body.error.message, "Job not found");
 });
 for (const id of ["abc", "0", "-1", "1.5", "04", "1e3", "2147483648", "99999999999999999999", "%20", "0x10"]) {
-  test(`GET /api/jobs/${id} -> 400`, async () => assertError(await get("/api/jobs/" + id), 400));
+  test(`GET /api/jobs/${id} -> 400`, async () => assertError(await get("/api/jobs/" + id, { auth: true }), 400));
 }
-test("GET /api/jobs/2147483647 -> 404 (max INT4 is valid)", async () => assertError(await get("/api/jobs/2147483647"), 404));
+test("GET /api/jobs/2147483647 -> 404 (max INT4 is valid)", async () => assertError(await get("/api/jobs/2147483647", { auth: true }), 404));
 
 test("GET /api/sources", async () => {
   const r = await get("/api/sources");
@@ -130,7 +150,11 @@ test("GET /api/sources", async () => {
 });
 
 // ---- Structured salary (seed is demonstration data; see prisma/seed.ts) ----
-const bySlug = async () => new Map((await jobs()).map((j) => [j.sourceUrl.split("/").pop(), j]));
+// sourceUrl is not in the list response any more; read it straight from the database to key jobs by slug.
+const bySlug = async () => {
+  const urls = new Map((await sql(`SELECT id, "sourceUrl" FROM "Job"`)).map((r) => [r.id, r.sourceUrl]));
+  return new Map((await jobs()).map((j) => [urls.get(j.id).split("/").pop(), j]));
+};
 const SAL = ["salaryMin", "salaryMax", "salaryCurrency", "salaryPeriod", "salaryDisclosure"];
 
 test("legacy jobs: structured salary fields are all null, legacy text kept", async () => {
@@ -183,6 +207,14 @@ test("every seeded job satisfies the documented salary invariants", async () => 
 });
 test("detail endpoint returns the same salary fields as the list", async () => {
   const list = (await bySlug()).get("data-analyst-insightly");
-  const d = (await get("/api/jobs/" + list.id)).body.data;
+  const d = (await get("/api/jobs/" + list.id, { auth: true })).body.data;
   for (const k of SAL) assert.equal(d[k], list[k], k);
+});
+
+test("GET /api/jobs/:id requires a session (401, even for bad or missing ids)", async () => {
+  for (const id of ["13", "abc", "9999"]) {
+    const r = await get("/api/jobs/" + id);
+    assertError(r, 401);
+    assert.equal(r.body.error.code, "UNAUTHENTICATED");
+  }
 });

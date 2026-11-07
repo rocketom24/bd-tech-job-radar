@@ -191,7 +191,7 @@ One source publishes many jobs. Repeating source details on every job row would 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/jobs` | List jobs, with optional filters |
-| GET | `/api/jobs/:id` | One job, including its source |
+| GET | `/api/jobs/:id` | One job with description, `sourceUrl` and source. Login required; records a unique `JobView` under the per-user lock and enforces the FREE 10-view quota (429 `VIEW_LIMIT_REACHED`). The list endpoint returns summaries without `description`/`sourceUrl`. |
 | GET | `/api/sources` | List sources |
 
 ### `GET /api/jobs` query parameters (basic filtering)
@@ -231,8 +231,8 @@ Email + password, database-backed sessions, no external auth service. All logic 
 
 - Passwords: async `crypto.scrypt` (N=32768, r=8, p=1, 64-byte key, 16-byte random salt), stored as a versioned string with its own parameters, compared with `timingSafeEqual`. Unknown-email logins verify against a dummy hash so timing does not reveal account existence.
 - Sessions: 32 random bytes -> `bdr_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` in production, 7 days, fixed). Only SHA-256(token) is stored in `Session`. Logout deletes the row; expired rows are deleted when seen. No background cleanup yet, so abandoned expired rows remain until used (`expiresAt` is indexed for a later sweep).
-- CSRF: `SameSite=Lax` + reject POSTs whose `Origin` host differs from `Host`. No CORS headers are added. No CSRF tokens (see API.md limitations).
-- Authentication only: job endpoints remain public; plans and usage are not enforced. Email verification and password reset are out of scope (no email infrastructure).
+- CSRF: `SameSite=Lax` + `isForeignOrigin` (`lib/auth.ts`) on every state-changing POST (register, login, logout, view, apply): a differing or opaque (`null`) `Origin` is rejected with 403 `FORBIDDEN_ORIGIN`; with no `Origin`, `Sec-Fetch-Site: cross-site` is rejected; a request with neither header (curl, Postman, server-to-server) is allowed, because it carries no ambient browser cookie. No CORS headers are added. No CSRF tokens.
+- Identity always comes from the validated database session (`getCurrentUser`); job endpoints stay public. Email verification and password reset are out of scope (no email infrastructure).
 
 ---
 
@@ -245,6 +245,7 @@ Email + password, database-backed sessions, no external auth service. All logic 
 - Server-side authority: status is read from the authenticated `User` row, never from a request. Register ignores client-supplied status and always creates `FREE`; login does not touch it; no public endpoint changes it.
 - Fail closed: an unknown status or a negative/non-integer count throws `RangeError` rather than being clamped, so bad data can neither grant PRO nor create extra credits. Callers must treat the throw as a denial or a server error.
 - `remaining` is never negative; `allowed` means "one more use is permitted now".
+- Phase 5: `GET /api/jobs/[id]` also enforces the view quota; GET and `POST .../view` share `recordJobView()` in `lib/usage.ts` (one `withUserLock` transaction: already-viewed check, count, entitlement, insert), so concurrent requests cannot exceed 10 and repeats never cost quota.
 - Connected in Phase 4: `POST /api/jobs/[id]/view`, `POST /api/jobs/[id]/apply` and `GET /api/me/usage` call the engine with counts read from `JobView` / `ApplyClick`. No payments exist; PRO is set manually in the database.
 
 ### Usage tracking and concurrency (Phase 4)
@@ -254,6 +255,14 @@ Email + password, database-backed sessions, no external auth service. All logic 
 - The plan is read from the locked row, so a status change cannot slip in mid-check. Works through `@prisma/adapter-neon` (interactive transactions run over its WebSocket pool).
 - The tests send simultaneous HTTP requests and check database counts; with `FOR UPDATE` removed all four concurrency tests fail, so they do exercise the lock.
 - Payment integration is not implemented.
+
+### Hardening (Phase 5)
+
+- **Rate limiting** (`lib/rate-limit.ts`, table `RateLimit`): fixed windows counted in Postgres with one atomic upsert per check, so every app instance shares the counters (no in-process state, no Redis). The window is computed from the database clock. Limits: register 5/hour per IP; login 20/15 min per IP and 10/15 min per target email; view 60/min and apply 20/min per authenticated user. Exceeding a limit returns 429 `RATE_LIMITED` with `Retry-After`. `GET` endpoints are not limited. The user-level limits run after authentication and are separate from the lifetime quotas (`VIEW_LIMIT_REACHED` / `APPLY_LIMIT_REACHED`).
+- **IP handling**: the client IP is read only from the header named by `TRUSTED_IP_HEADER` (set it to a header your platform overwrites, e.g. `x-real-ip` on Vercel). Unset means no header is trusted and all clients share one `unknown` bucket (strict but safe; it cannot be bypassed by spoofing). IPs and emails are stored only as `HMAC-SHA256(RATE_LIMIT_SECRET, scope + value)` truncated to 128 bits. A missing or short (<32 chars) secret makes the limited routes return 500 rather than skipping the limit.
+- **Errors**: every API error is `{ error: { code, message, details? } }` built by `lib/api-error.ts`; 500s carry no internals.
+- **Headers** (`next.config.ts`): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` in production only, `X-Powered-By` removed. No CSP (API-only app; an untested policy could break the starter page).
+- **Body size**: auth bodies over 10,000 characters are rejected with 413 before parsing.
 
 ---
 

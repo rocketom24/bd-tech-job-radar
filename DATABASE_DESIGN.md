@@ -88,6 +88,15 @@ User      1 ---< Usage
 
 Index `(userId, createdAt)`. Deliberately **not** unique: each click is a row. The older `Usage` table is unused by Phase 4 (generic endpoint log; it cannot express uniqueness).
 
+### RateLimit (migration `add_rate_limit`, additive)
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| key | text | NO | **PK part**. `<limit name>:<HMAC pseudonym or user id>`; never a raw IP or email |
+| windowStart | timestamptz | NO | **PK part**. Start of the fixed window, aligned to the epoch using the database clock |
+| count | integer | NO | hits in that window |
+
+No foreign keys. One atomic `INSERT ... ON CONFLICT (key, windowStart) DO UPDATE SET count = count + 1 RETURNING count` per check. Rows older than a day are purged opportunistically (about 1% of checks). Index on `windowStart` for that purge.
+
 ## Foreign keys
 
 | FK | Delete rule | Why |
@@ -141,6 +150,8 @@ One source publishes many jobs. Copying source name/type/url onto every job row 
 |---|---|---|
 | `DATABASE_URL` | app runtime | Neon dashboard -> Connect -> pooled |
 | `DIRECT_URL` | Prisma CLI (migrations, validate) | Neon dashboard -> Connect -> direct (untick "Connection pooling") |
+| `RATE_LIMIT_SECRET` | app runtime (HMAC of IPs/emails for rate limiting) | any random 32+ character string; different per environment |
+| `TRUSTED_IP_HEADER` | app runtime (optional) | name of the header your proxy overwrites with the client IP; unset = trust none |
 
 Stored in `.env` (git-ignored). `.env.example` holds placeholders and is committed.
 
@@ -216,10 +227,20 @@ CREATE TABLE "Usage" (
   "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX "Usage_userId_createdAt_idx" ON "Usage"("userId","createdAt");
+
+CREATE TABLE "RateLimit" (
+  "key"         text NOT NULL,
+  "windowStart" timestamptz NOT NULL,
+  "count"       integer NOT NULL,
+  PRIMARY KEY ("key","windowStart")
+);
+CREATE INDEX "RateLimit_windowStart_idx" ON "RateLimit"("windowStart");
 ```
+
+(`JobView` and `ApplyClick` DDL: see their migration.)
 
 ## Open decisions (not blocking)
 
 - `Job.sourceUrl` is not UNIQUE. Dedup is Day 2; add a unique/dedup key then.
 - `subscriptionStatus` stays `text` for now (values `FREE`, `PRO`; no migration in Phase 3). Make it an enum or add a CHECK constraint once the plan list is stable. Unknown values in existing rows are rejected by the entitlement engine, not granted access.
-- Phase 4 must decide how to store unique job views (a per-user/per-job record) and Apply clicks; the existing `Usage` table (`endpoint` + timestamp) cannot express uniqueness by itself. FREE limits: 10 unique views, 3 Apply clicks, per account, no reset.
+- Resolved in Phase 4: unique views live in `JobView`, Apply clicks in `ApplyClick`; the older `Usage` table is unused. FREE limits: 10 unique views, 3 Apply clicks, per account, no reset.

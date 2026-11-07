@@ -27,25 +27,27 @@ Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Impo
 ## Conventions
 
 - Success: `{ "data": ... }`
-- Error: `{ "error": { "message": string, "details"?: object } }`
-- 500 responses are always `{ "error": { "message": "Internal server error" }}`; the server log records only the error class and code (never messages, queries or connection details).
+- Error (every endpoint): `{ "error": { "code": string, "message": string, "details"?: object } }`. `code` is stable and machine-readable; `message` is for humans and may change.
+- 500 responses are always `{ "error": { "code": "INTERNAL_ERROR", "message": "Internal server error" }}`; the server log records only the error class and code (never messages, queries or connection details).
+- Error codes: `VALIDATION_ERROR`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `INVALID_QUERY`, `INVALID_JOB_ID`, `JOB_NOT_FOUND`, `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN_ORIGIN`, `INVALID_SUBSCRIPTION`, `APPLY_URL_UNAVAILABLE`, `VIEW_LIMIT_REACHED`, `APPLY_LIMIT_REACHED`, `RATE_LIMITED`, `INTERNAL_ERROR`. Success bodies are unchanged from earlier phases (the usage endpoints keep their `success: true` flag).
 
 | Status | Meaning |
 | --- | --- |
 | 200 | Success |
 | 201 | Registered |
 | 400 | Invalid query parameter, path id or request body |
+| 413 | Auth request body over 10,000 characters |
 | 422 | Job has no valid application URL (`APPLY_URL_UNAVAILABLE`) |
 | 401 | Not authenticated / invalid credentials |
-| 403 | Cross-origin request rejected (auth POSTs) |
+| 403 | Cross-origin request rejected (all state-changing POSTs); invalid stored plan |
 | 404 | Job not found |
-| 429 | FREE quota used up (`VIEW_LIMIT_REACHED`, `APPLY_LIMIT_REACHED`) |
+| 429 | FREE quota used up (`VIEW_LIMIT_REACHED`, `APPLY_LIMIT_REACHED`) or rate limit hit (`RATE_LIMITED`, with `Retry-After`) |
 | 409 | Email already registered |
 | 500 | Unexpected server error |
 
 ## GET /api/jobs
 
-List jobs, newest first (`createdAt` desc). Returns all matches.
+List jobs, newest first (`createdAt` desc). Returns all matches. **Public** (no login). The response is a *summary*: `description` and `sourceUrl` are **not** included; they come from `GET /api/jobs/{id}` (login + view quota) and `POST /api/jobs/{id}/apply`. `keyword` still searches `description` server-side.
 
 Query parameters (all optional; each may appear at most once):
 
@@ -69,7 +71,6 @@ Values are trimmed; empty/whitespace-only values are ignored. A NUL character (`
       "sector": "Private",
       "category": "Software",
       "location": "Dhaka",
-      "description": "builds APIs",
       "salary": "Tk 70,000 - 110,000",
       "salaryMin": "70000",
       "salaryMax": "110000",
@@ -80,7 +81,6 @@ Values are trimmed; empty/whitespace-only values are ignored. A NUL character (`
       "skills": [],
       "deadline": null,
       "sourceId": 3,
-      "sourceUrl": "https://example.com/job/1",
       "verified": false,
       "createdAt": "2026-11-04T10:00:00.000Z"
     }
@@ -98,6 +98,14 @@ Errors (400):
 ```
 
 ## GET /api/jobs/{id}
+
+**Login required** (`bdr_session` cookie). Returns the full job (including `description`, `sourceUrl` and `source`) and counts as a *job-detail view* against the account's quota:
+
+- FREE: 10 **unique** jobs per account, lifetime. Re-opening a job already viewed is free, even after the limit is reached.
+- PRO: unlimited; views are still recorded.
+- A new job after 10 unique views: 429 `VIEW_LIMIT_REACHED`, and no job data is returned.
+
+Identity and plan come only from the session and the database; any `userId` / `subscriptionStatus` in the query, headers or body is ignored. It shares the quota, row lock and rate limit (60/min per user) with `POST /api/jobs/{id}/view`, so calling both for one job costs one view. Check order: 401, then 400, then 404, then the quota (429). Also 403 `INVALID_SUBSCRIPTION` (unknown stored plan, fails closed) and 500 `INTERNAL_ERROR`.
 
 `id` must be a positive integer (no leading zeros, max 2147483647).
 
@@ -158,15 +166,26 @@ Legacy row: `"salary": "Tk 45,000 - 70,000"` with all five structured fields `nu
 
 ## Authentication
 
-Email + password with database-backed sessions. Phase 2 establishes *authentication only*: `/api/jobs`, `/api/jobs/{id}` and `/api/sources` stay public, and nothing enforces plans or usage yet.
+Email + password with database-backed sessions. `/api/jobs` (summary list) and `/api/sources` stay public. `GET /api/jobs/{id}` (full detail) requires login and enforces the view quota; Apply is enforced by its own endpoint (see below).
 
 **Session cookie.** Register and login set `bdr_session` (a 256-bit random token): `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` in production, expires after a **fixed 7 days** (no sliding renewal). The token is never returned in JSON. Only its SHA-256 is stored in the `Session` table. Send the cookie back on later requests (browsers do this automatically; with curl use `-c jar -b jar`).
 
 **Safe user** (the only user shape ever returned): `{ "id", "email", "subscriptionStatus", "createdAt" }`. Never the password hash.
 
-**Input.** JSON body. `email` is trimmed and lower-cased; it must be a valid address (max 254). `password` is 12-128 characters, used exactly as sent (not trimmed or case-folded). 400 responses carry `details` per field, e.g. `{ "error": { "message": "Invalid request body", "details": { "password": ["Password must be at least 12 characters"] } } }`.
+**Input.** JSON body. `email` is trimmed and lower-cased; it must be a valid address (max 254). `password` is 12-128 characters, used exactly as sent (not trimmed or case-folded). 400 responses carry `details` per field, e.g. `{ "error": { "code": "VALIDATION_ERROR", "message": "Invalid request body", "details": { "password": ["Password must be at least 12 characters"] } } }`. Malformed JSON is 400 `INVALID_JSON`; a body over 10,000 characters is 413 `PAYLOAD_TOO_LARGE`.
 
-**Origin check.** The POST endpoints reject (403) a request whose `Origin` header names a different host than the one called. Requests with no `Origin` (curl, tests, server-to-server) are allowed.
+**Origin check (CSRF).** Every state-changing POST (register, login, logout, view, apply) rejects with 403 `FORBIDDEN_ORIGIN` a request whose `Origin` names a different host than `Host`, whose `Origin` is the opaque `null`, or that has no `Origin` but `Sec-Fetch-Site: cross-site`. A request with none of those headers (curl, Postman, server-to-server) is allowed: it is not a browser request carrying someone's ambient cookie. Combined with `SameSite=Lax`, a third-party page cannot make a logged-in browser call these endpoints.
+
+**Rate limits** (shared across instances, stored in Postgres; exceeding returns 429 `RATE_LIMITED` plus a `Retry-After` header in seconds):
+
+| Endpoint | Limit |
+| --- | --- |
+| `POST /api/auth/register` | 5 per hour per client IP |
+| `POST /api/auth/login` | 20 per 15 min per client IP, and 10 per 15 min per target email (any IP) |
+| `POST /api/jobs/{id}/view` | 60 per minute per authenticated user |
+| `POST /api/jobs/{id}/apply` | 20 per minute per authenticated user |
+
+Every attempt counts, successful or not. Public `GET` endpoints are not limited. The client IP comes only from the header named by the `TRUSTED_IP_HEADER` environment variable; when unset, all clients share one bucket. The per-email login limit means an attacker can temporarily block logins for a known email (the usual trade-off against password guessing).
 
 ### POST /api/auth/register
 
@@ -178,13 +197,13 @@ curl -i -c jar -X POST localhost:3000/api/auth/register -H 'content-type: applic
 ```json
 { "data": { "id": 7, "email": "user@example.com", "subscriptionStatus": "FREE", "createdAt": "2026-11-07T13:00:00.000Z" } }
 ```
-409 `{ "error": { "message": "An account with this email already exists" } }` for a duplicate (case-insensitive).
+409 `{ "error": { "code": "EMAIL_TAKEN", "message": "An account with this email already exists" } }` for a duplicate (case-insensitive).
 
 ### POST /api/auth/login
 
 Same body. 200 with the same `data` shape and a **new** session cookie (existing sessions stay valid). Unknown email, wrong password and accounts without a password all return the same 401:
 ```json
-{ "error": { "message": "Invalid email or password." } }
+{ "error": { "code": "INVALID_CREDENTIALS", "message": "Invalid email or password." } }
 ```
 
 ### POST /api/auth/logout
@@ -193,7 +212,7 @@ Deletes the session behind the cookie and clears it. Always 200, including when 
 
 ### GET /api/auth/me
 
-200 `{ "data": <safe user> }` for a valid session. 401 `{ "error": { "message": "Not authenticated" } }` for no cookie, unknown token or expired session (an expired session row is deleted when seen).
+200 `{ "data": <safe user> }` for a valid session. 401 `{ "error": { "code": "UNAUTHENTICATED", "message": "Not authenticated" } }` for no cookie, unknown token or expired session (an expired session row is deleted when seen).
 
 ### Subscription status
 
@@ -202,19 +221,20 @@ Deletes the session behind the cookie and clears it. Always 200, including when 
 ### Limitations
 
 - No email verification and no password reset: there is no email delivery infrastructure yet. A forgotten password cannot be recovered.
-- No rate limiting or lockout on login/register (needs shared state; later phase).
+- Rate limits exist (above) but there is no account lockout, CAPTCHA or password-breach check.
 - No "log out everywhere", no session listing, no password change.
-- CSRF: `SameSite=Lax` plus the Origin check above. Requests without an `Origin` header are not checked, and no CSRF token is used; acceptable while every state-changing endpoint takes a JSON body and no CORS is enabled. Revisit when a frontend and other mutating endpoints exist.
+- CSRF: `SameSite=Lax` plus the Origin / `Sec-Fetch-Site` check above; no CSRF token. A non-browser client can omit both headers, which is intended and carries no ambient cookie. Revisit when a frontend and CORS exist.
+- Gating is partial by design: the public list returns summaries only (no `description`, `sourceUrl`), the detail endpoint enforces the view quota, and the Apply endpoint is the only way to get `sourceUrl` without opening the detail. The list is unmetered and still exposes title, organization, location, salary and skills, and `?keyword=` can probe `description` text (a hit/miss oracle, not the text itself). A FREE user can also open 10 details, then use Apply for `sourceUrl`s within the Apply quota; account sharing/scraping with many accounts is not prevented.
 - Register reveals whether an email is taken (409). Login does not (generic 401, same hashing work either way).
 - Plain HTTP in development: the cookie is not `Secure` outside production.
 
 ## Usage tracking (Phase 4)
 
-All three endpoints require the `bdr_session` cookie. Identity and plan always come from the session and the database: any `userId`, `subscriptionStatus` or URL in a request body is ignored. The usage endpoints use stable error codes, `{ "error": { "code": string, "message": string } }`, and `{ "success": true, ... }` successes (shapes below). POSTs also apply the cross-origin check (403). No payment system exists, so a FREE user cannot upgrade.
+All three endpoints require the `bdr_session` cookie. Identity and plan always come from the session and the database: any `userId`, `subscriptionStatus` or URL in a request body is ignored. Successes are `{ "success": true, ... }` (shapes below). POSTs also apply the cross-origin check (403) and the per-user rate limit (429 `RATE_LIMITED`, distinct from the lifetime quota codes). No payment system exists, so a FREE user cannot upgrade.
 
 ### POST /api/jobs/{id}/view
 
-Records a **unique** job-detail view: one per user per job. No body.
+Records a **unique** job-detail view: one per user per job. No body. Kept for compatibility: `GET /api/jobs/{id}` now records the view itself, so clients no longer need to call this first.
 
 - 200 `{ "success": true, "viewed": true, "alreadyViewed": false }` on the first view; `alreadyViewed: true` for a repeat (nothing is consumed, and repeats stay allowed after the limit is reached).
 - 429 `{ "error": { "code": "VIEW_LIMIT_REACHED", "message": "You have reached your free job-view limit." } }` for a new job when a FREE user already viewed 10.
