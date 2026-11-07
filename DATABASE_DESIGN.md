@@ -45,9 +45,20 @@ User      1 ---< Usage
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | id | integer identity | NO | **PK** |
-| email | text | NO | **UNIQUE** |
+| email | text | NO | **UNIQUE**; app stores it trimmed + lower-cased |
+| passwordHash | text | YES | scrypt, `scrypt$v1$N$r$p$salt$hash`; NULL for users created before auth |
 | subscriptionStatus | text | NO, default `'FREE'` | not a DB enum yet: values undecided |
 | createdAt | timestamptz | NO, default `now()` | |
+
+### Session (migration `add_auth_sessions`, additive)
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | integer identity | NO | **PK** |
+| tokenHash | text | NO | **UNIQUE**; SHA-256 hex of the cookie token (raw token never stored) |
+| userId | integer | NO | **FK** -> User.id, `ON DELETE CASCADE` |
+| expiresAt | timestamptz | NO | created + 7 days, fixed |
+| createdAt | timestamptz | NO, default `now()` | |
+| lastUsedAt | timestamptz | YES | reserved, currently unused |
 
 ### Usage
 | Column | Type | Null | Notes |
@@ -63,12 +74,13 @@ User      1 ---< Usage
 |---|---|---|
 | Job.sourceId -> JobSource.id | `RESTRICT` | a source that still has jobs cannot be deleted silently |
 | Usage.userId -> User.id | `RESTRICT` | usage history must not vanish when a user row is touched |
+| Session.userId -> User.id | `CASCADE` | sessions are disposable; deleting a user removes their logins |
 
 Update rule is the default (`NO ACTION`); ids never change.
 
 ## Constraints summary
 
-- PKs on all four `id` columns.
+- PKs on all five `id` columns (incl. `Session`).
 - `User.email` UNIQUE.
 - `Job.deadline` and the five structured salary columns are the only nullable `Job` columns.
 - Salary CHECKs: `Job_salary_amounts_nonnegative`, `Job_salary_min_le_max`, `Job_salary_currency_format`, `Job_salary_disclosure_consistency` (DISCLOSED needs currency + period + an amount; NEGOTIABLE/NOT_DISCLOSED allow no amounts or currency; NULL disclosure means all structured columns NULL). Migration `add_structured_salary` (additive, SQL only).
@@ -86,6 +98,9 @@ Postgres does **not** auto-index FK columns, only PKs and UNIQUE.
 | `Job(createdAt DESC)` | default "newest first" listing |
 | `Job(sector)` | `?sector=` filter |
 | `Job(category)` | `?category=` filter |
+| `Session(tokenHash)` UNIQUE | session lookup on every authenticated request |
+| `Session(userId)` | FK, per-user session cleanup |
+| `Session(expiresAt)` | future sweep of expired sessions |
 | `Usage(userId, createdAt)` | future "calls by user in a time window" quota check |
 
 Deliberately **not** indexed: `keyword` search. `ILIKE '%x%'` cannot use a btree index. At Day 1 data size a scan is fine. If it gets slow, add `pg_trgm` (later, not now). `location`, `verified`, `deadline` are skipped until a real slow query shows up.
@@ -158,9 +173,21 @@ CREATE INDEX "Job_category_idx"  ON "Job"("category");
 CREATE TABLE "User" (
   "id"                 integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   "email"              text NOT NULL UNIQUE,
+  "passwordHash"       text,
   "subscriptionStatus" text NOT NULL DEFAULT 'FREE',
   "createdAt"          timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE "Session" (
+  "id"         integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  "tokenHash"  text NOT NULL UNIQUE,
+  "userId"     integer NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+  "expiresAt"  timestamptz NOT NULL,
+  "createdAt"  timestamptz NOT NULL DEFAULT now(),
+  "lastUsedAt" timestamptz
+);
+CREATE INDEX "Session_userId_idx"    ON "Session"("userId");
+CREATE INDEX "Session_expiresAt_idx" ON "Session"("expiresAt");
 
 CREATE TABLE "Usage" (
   "id"        integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

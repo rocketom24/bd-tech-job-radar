@@ -87,6 +87,8 @@ Client
 app/api/jobs/route.ts
 app/api/jobs/[id]/route.ts
 app/api/sources/route.ts
+app/api/auth/{register,login,logout,me}/route.ts   # Phase 2
+lib/auth.ts            # scrypt hashing, DB sessions, cookie, Origin check
 lib/prisma.ts          # single Prisma client instance
 lib/schemas.ts         # Zod schemas
 prisma/schema.prisma
@@ -138,11 +140,21 @@ Structured salary was added **beside** the text, not instead of it, so existing 
 | verified | boolean, whether the posting was checked against its source |
 | createdAt | |
 
-### User (forward-looking, table only)
+### Session (Phase 2)
 | Field | Notes |
 |---|---|
 | id | primary key |
-| email | unique |
+| tokenHash | unique SHA-256 of the cookie token |
+| userId | FK -> User, `ON DELETE CASCADE` |
+| expiresAt | fixed 7 days after creation |
+| createdAt, lastUsedAt | lastUsedAt is currently unused |
+
+### User
+| Field | Notes |
+|---|---|
+| id | primary key |
+| email | unique; stored lower-cased |
+| passwordHash | nullable `scrypt$v1$N$r$p$salt$hash`; null = legacy user |
 | subscriptionStatus | status of a future subscription |
 | createdAt | |
 
@@ -210,6 +222,17 @@ All query and path parameters are validated with Zod.
 - validation and error handling
 - the three read APIs and basic filtering
 - testing and documentation
+
+---
+
+## Authentication (Phase 2, as implemented)
+
+Email + password, database-backed sessions, no external auth service. All logic is in `lib/auth.ts`; routes stay thin.
+
+- Passwords: async `crypto.scrypt` (N=32768, r=8, p=1, 64-byte key, 16-byte random salt), stored as a versioned string with its own parameters, compared with `timingSafeEqual`. Unknown-email logins verify against a dummy hash so timing does not reveal account existence.
+- Sessions: 32 random bytes -> `bdr_session` cookie (`HttpOnly`, `SameSite=Lax`, `Secure` in production, 7 days, fixed). Only SHA-256(token) is stored in `Session`. Logout deletes the row; expired rows are deleted when seen. No background cleanup yet, so abandoned expired rows remain until used (`expiresAt` is indexed for a later sweep).
+- CSRF: `SameSite=Lax` + reject POSTs whose `Origin` host differs from `Host`. No CORS headers are added. No CSRF tokens (see API.md limitations).
+- Authentication only: job endpoints remain public; plans and usage are not enforced. Email verification and password reset are out of scope (no email infrastructure).
 
 ---
 

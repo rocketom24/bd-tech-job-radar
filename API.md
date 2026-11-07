@@ -1,6 +1,6 @@
 # API
 
-Read-only JSON API. No authentication, no pagination.
+JSON API. Job and source endpoints are read-only and **public** (no authentication required); the four `/api/auth/*` endpoints are described under [Authentication](#authentication). No pagination.
 
 Job objects carry both the legacy `salary` text and five structured salary fields; see [Salary](#salary).
 
@@ -13,14 +13,14 @@ npm run dev            # http://localhost:3000, needs DATABASE_URL in .env (full
 
 ## Tests
 
-Read-only HTTP integration tests (Node built-in test runner, no extra dependencies). Start the dev server, then in another terminal:
+HTTP integration tests (Node built-in test runner, no extra dependencies). Start the dev server, then in another terminal:
 
 ```bash
 npm run test:api                       # against http://localhost:3000
 BASE_URL=http://localhost:3210 npm run test:api
 ```
 
-They expect the seeded development database (25 jobs, 5 sources; `npx prisma db seed`). `tests/db-failure.test.mjs` also starts its own temporary dev server (port 3299, separate build dir) with an unreachable `DATABASE_URL` to check that failures return a generic 500 and log no credentials.
+They expect the seeded development database (25 jobs, 5 sources; `npx prisma db seed`). `tests/auth.test.mjs` creates users named `authtest-*@example.test` in that database and deletes only those afterwards (sessions cascade); it runs one SQL UPDATE (via `@neondatabase/serverless`, a dev dependency) to expire a session. `tests/db-failure.test.mjs` also starts its own temporary dev server (port 3299, separate build dir) with an unreachable `DATABASE_URL` to check that failures return a generic 500 and log no credentials.
 
 Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Import), keep `baseUrl` = `http://localhost:3000`, and run the collection with the Collection Runner. Each request has test scripts.
 
@@ -33,8 +33,12 @@ Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Impo
 | Status | Meaning |
 | --- | --- |
 | 200 | Success |
-| 400 | Invalid query parameter or path id |
+| 201 | Registered |
+| 400 | Invalid query parameter, path id or request body |
+| 401 | Not authenticated / invalid credentials |
+| 403 | Cross-origin request rejected (auth POSTs) |
 | 404 | Job not found |
+| 409 | Email already registered |
 | 500 | Unexpected server error |
 
 ## GET /api/jobs
@@ -149,6 +153,54 @@ Example (`GET /api/jobs/{id}`, a remote job paid hourly in USD; other fields omi
 
 Negotiable: `"salary": "Negotiable"`, amounts/currency/period `null`, `"salaryDisclosure": "NEGOTIABLE"`.
 Legacy row: `"salary": "Tk 45,000 - 70,000"` with all five structured fields `null`.
+
+## Authentication
+
+Email + password with database-backed sessions. Phase 2 establishes *authentication only*: `/api/jobs`, `/api/jobs/{id}` and `/api/sources` stay public, and nothing enforces plans or usage yet.
+
+**Session cookie.** Register and login set `bdr_session` (a 256-bit random token): `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` in production, expires after a **fixed 7 days** (no sliding renewal). The token is never returned in JSON. Only its SHA-256 is stored in the `Session` table. Send the cookie back on later requests (browsers do this automatically; with curl use `-c jar -b jar`).
+
+**Safe user** (the only user shape ever returned): `{ "id", "email", "subscriptionStatus", "createdAt" }`. Never the password hash.
+
+**Input.** JSON body. `email` is trimmed and lower-cased; it must be a valid address (max 254). `password` is 12-128 characters, used exactly as sent (not trimmed or case-folded). 400 responses carry `details` per field, e.g. `{ "error": { "message": "Invalid request body", "details": { "password": ["Password must be at least 12 characters"] } } }`.
+
+**Origin check.** The POST endpoints reject (403) a request whose `Origin` header names a different host than the one called. Requests with no `Origin` (curl, tests, server-to-server) are allowed.
+
+### POST /api/auth/register
+
+```bash
+curl -i -c jar -X POST localhost:3000/api/auth/register -H 'content-type: application/json' \
+  -d '{"email":"user@example.com","password":"a-secure-password"}'
+```
+201, sets `bdr_session`:
+```json
+{ "data": { "id": 7, "email": "user@example.com", "subscriptionStatus": "FREE", "createdAt": "2026-11-07T13:00:00.000Z" } }
+```
+409 `{ "error": { "message": "An account with this email already exists" } }` for a duplicate (case-insensitive).
+
+### POST /api/auth/login
+
+Same body. 200 with the same `data` shape and a **new** session cookie (existing sessions stay valid). Unknown email, wrong password and accounts without a password all return the same 401:
+```json
+{ "error": { "message": "Invalid email or password." } }
+```
+
+### POST /api/auth/logout
+
+Deletes the session behind the cookie and clears it. Always 200, including when already logged out: `{ "data": { "loggedOut": true } }`. Other sessions of the same user are untouched.
+
+### GET /api/auth/me
+
+200 `{ "data": <safe user> }` for a valid session. 401 `{ "error": { "message": "Not authenticated" } }` for no cookie, unknown token or expired session (an expired session row is deleted when seen).
+
+### Limitations
+
+- No email verification and no password reset: there is no email delivery infrastructure yet. A forgotten password cannot be recovered.
+- No rate limiting or lockout on login/register (needs shared state; later phase).
+- No "log out everywhere", no session listing, no password change.
+- CSRF: `SameSite=Lax` plus the Origin check above. Requests without an `Origin` header are not checked, and no CSRF token is used; acceptable while every state-changing endpoint takes a JSON body and no CORS is enabled. Revisit when a frontend and other mutating endpoints exist.
+- Register reveals whether an email is taken (409). Login does not (generic 401, same hashing work either way).
+- Plain HTTP in development: the cookie is not `Secure` outside production.
 
 ## GET /api/sources
 

@@ -7,11 +7,12 @@ A job discovery and aggregation backend focused on Bangladesh's technology job m
 **Backend-focused demo (Day 1 foundation).** What exists today:
 
 - A PostgreSQL schema (Neon) with Prisma migrations and four tables. Jobs carry a legacy `salary` text plus structured salary fields (see [API.md](API.md#salary)).
-- Three read-only JSON endpoints: `GET /api/jobs`, `GET /api/jobs/{id}`, `GET /api/sources`.
+- Three read-only, public JSON endpoints: `GET /api/jobs`, `GET /api/jobs/{id}`, `GET /api/sources`.
+- Email + password authentication with database-backed sessions: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` (see [API.md](API.md#authentication)).
 - Idempotent seed script with **25 synthetic demo jobs** and 5 demo sources. All records are demonstration data; every URL uses `example.com`. They are not real vacancies.
 - HTTP integration tests and a Postman collection.
 
-What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), authentication, subscriptions or usage enforcement (`User` and `Usage` tables exist but nothing reads or writes them), pagination, full-text search. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
+What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), email verification, password reset, subscriptions or usage enforcement (`Usage` is unused; nothing restricts anything by plan), pagination, full-text search. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
 
 ## Tech stack
 
@@ -33,6 +34,8 @@ The planned ingestion pipeline (Sources -> Collection -> Raw Content -> Extracti
 app/api/jobs/route.ts        GET /api/jobs (filters)
 app/api/jobs/[id]/route.ts   GET /api/jobs/{id}
 app/api/sources/route.ts     GET /api/sources
+app/api/auth/*/route.ts      register, login, logout, me
+lib/auth.ts                  scrypt hashing, sessions, cookie, Origin check
 lib/prisma.ts                shared Prisma client (Neon adapter, DATABASE_URL)
 lib/schemas.ts               Zod query schema
 lib/log.ts                   safe error logging
@@ -108,7 +111,7 @@ npm run test:api                         # against http://localhost:3000
 BASE_URL=http://localhost:3210 npm run test:api
 ```
 
-The tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/schemas.test.mjs` is pure (no server or database). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
+`tests/auth.test.mjs` writes test users (`authtest-*@example.test`) to the dev database and removes only those. The other tests are read-only and assume the seeded dev database (25 jobs, 5 sources). `tests/schemas.test.mjs` is pure (no server or database). `tests/db-failure.test.mjs` additionally starts its own temporary dev server on port 3299 with an unreachable database URL, so it needs that port free. It is a development-mode test; running only `tests/api.test.mjs` is enough against a production server. See [API.md](API.md) for the Postman collection.
 
 ## Production build
 
@@ -121,13 +124,17 @@ Provide `DATABASE_URL` (pooled) in the environment of the running server. Apply 
 
 ## API overview
 
-All endpoints are read-only and unauthenticated. Success: `{ "data": ... }`. Error: `{ "error": { "message": ..., "details"?: ... } }`.
+Job and source endpoints are read-only and public; auth endpoints are listed below. Success: `{ "data": ... }`. Error: `{ "error": { "message": ..., "details"?: ... } }`.
 
 | Endpoint | Description |
 | --- | --- |
 | `GET /api/jobs` | All jobs, newest first. Optional `keyword`, `location`, `category` filters. |
 | `GET /api/jobs/{id}` | One job including its source. 400 for an invalid id, 404 if missing. |
 | `GET /api/sources` | All sources, sorted by name. |
+| `POST /api/auth/register` | Create account (email + password >= 12 chars), start session. 201 / 400 / 409. |
+| `POST /api/auth/login` | Start a session. 200, or generic 401. |
+| `POST /api/auth/logout` | End the current session; idempotent. |
+| `GET /api/auth/me` | Current user, or 401. |
 
 Full parameter and response reference: [API.md](API.md).
 
@@ -137,7 +144,8 @@ Full parameter and response reference: [API.md](API.md).
 | --- | --- |
 | `JobSource` | where jobs come from (`GOVERNMENT`, `COMPANY`, `UNIVERSITY`, `NGO`, `PORTAL`, `OTHER`) |
 | `Job` | a posting; belongs to one `JobSource` (`ON DELETE RESTRICT`); `deadline` and the structured salary fields are nullable; legacy `salary` text kept |
-| `User` | placeholder for future subscriptions; unique `email` |
+| `User` | account: unique `email`, nullable scrypt `passwordHash`, `subscriptionStatus` (not enforced yet) |
+| `Session` | login session: SHA-256 `tokenHash` (unique), `expiresAt`; cascade-deleted with its user |
 | `Usage` | placeholder for future per-user call tracking; belongs to a `User` |
 
 Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema is managed only through Prisma migrations in `prisma/migrations/`.
@@ -149,7 +157,8 @@ Details and reference DDL: [DATABASE_DESIGN.md](DATABASE_DESIGN.md). The schema 
 - Salary filtering/sorting is not implemented; structured salary is returned, not queryable. There is no salary write endpoint yet, so `salarySchema` is exercised by the seed and tests only.
 - `keyword` searches `title`, `organization` and `description` only. It does **not** search the `skills` array.
 - Substring search uses `ILIKE` without an index (fine at this size).
-- No authentication, authorization, rate limiting or subscription enforcement.
+- Authentication exists, but job endpoints are intentionally still public. No authorization, rate limiting, subscription or usage enforcement.
+- No email verification and no password reset (no email delivery infrastructure yet).
 - No frontend; `/` is the unmodified Next.js starter page.
 - `Job.sourceUrl` is not unique, so there is no deduplication yet.
 - Tests need a running server and the seeded development database; there is no CI.

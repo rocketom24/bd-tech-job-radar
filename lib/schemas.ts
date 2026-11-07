@@ -61,3 +61,17 @@ export const salarySchema = z
   });
 
 export type SalaryInput = z.infer<typeof salarySchema>;
+
+// ---- Authentication ----------------------------------------------------------------
+// Passwords are never trimmed or case-folded. Email is trimmed + lowercased.
+const emailField = z.string().trim().toLowerCase().max(254).pipe(z.email());
+
+export const registerSchema = z.object({
+  email: emailField,
+  password: z.string().min(12, "Password must be at least 12 characters").max(128),
+});
+
+export const loginSchema = z.object({
+  email: emailField,
+  password: z.string().min(1, "Password is required").max(128),
+});
