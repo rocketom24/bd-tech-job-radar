@@ -168,21 +168,23 @@ export function JobDetail({ id }: { id: string }) {
     return (
       <div className={`container ${styles.page}`}>
         <BackLink />
-        <section className={cx(styles.gate, "enter")} aria-labelledby="gate-title">
-          <h1 id="gate-title">Log in to open this job</h1>
-          <p>
-            Searching the job list is open to everyone. The full description, source and Apply link need a free account, which includes 10 job views and
-            3 Apply clicks.
-          </p>
-          <div className={styles.row}>
-            <Link href={`/login?next=${next}`} className="btn">
-              Log in
-            </Link>
-            <Link href={`/register?next=${next}`} className="btn btn-ghost">
-              Create free account
-            </Link>
-          </div>
-        </section>
+        <div className={styles.gateWrap}>
+          <section className={cx(styles.gate, "enter")} aria-labelledby="gate-title">
+            <h1 id="gate-title">Log in to open this job</h1>
+            <p>
+              Searching the job list is open to everyone. The full description, source and Apply link need a free account, which includes 10 job views
+              and 3 Apply clicks.
+            </p>
+            <div className={styles.row}>
+              <Link href={`/login?next=${next}`} className="btn">
+                Log in
+              </Link>
+              <Link href={`/register?next=${next}`} className="btn btn-ghost">
+                Create free account
+              </Link>
+            </div>
+          </section>
+        </div>
       </div>
     );
   }

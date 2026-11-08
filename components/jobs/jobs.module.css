@@ -145,6 +145,11 @@
   font-size: 17px;
   outline: none;
 }
+/* Beat the global :focus-visible ring, which overlapped the label. Focus stays visible:
+   the whole bar gets an ink border + ring, the cell tints and the icon turns coral. */
+.searchInput:focus-visible {
+  outline: none;
+}
 .searchInput::placeholder {
   color: #9a918a;
 }
