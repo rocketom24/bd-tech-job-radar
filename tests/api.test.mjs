@@ -17,7 +17,7 @@ const STARTED = new Date().toISOString();
 const EMAIL = `apitest-${randomUUID().slice(0, 8)}@example.test`;
 let cookie;
 before(async () => {
-  const r = await fetch(BASE + "/api/auth/register", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.9.9.9" }, body: JSON.stringify({ email: EMAIL, password: "correct horse battery" }) });
+  const r = await fetch(BASE + "/api/auth/register", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.9.9.9" }, body: JSON.stringify({ email: EMAIL, password: `pw-${randomUUID()}` }) });
   assert.equal(r.status, 201);
   cookie = r.headers.getSetCookie().find((c) => c.startsWith("bdr_session="))?.split(";")[0];
   await sql(`UPDATE "User" SET "subscriptionStatus" = 'PRO' WHERE email = $1`, [EMAIL]);

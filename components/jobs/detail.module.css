@@ -1,0 +1,317 @@
+.page {
+  display: block;
+  padding-block: 28px 0;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: clamp(24px, 4vw, 40px);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.back svg {
+  transition: transform var(--fast) var(--ease);
+}
+.back:hover {
+  color: var(--ink);
+}
+.back:hover svg {
+  transform: translateX(-3px);
+}
+
+/* ---------- Header ---------- */
+.org {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--brown);
+}
+.head h1 {
+  margin-top: 10px;
+  max-width: 18ch;
+  font-size: clamp(36px, 5.6vw, 64px);
+  line-height: 1;
+}
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: clamp(24px, 3vw, 32px);
+}
+.facts > div {
+  padding-right: 28px;
+  margin-right: 28px;
+  border-right: 1px solid var(--line);
+}
+.facts > div:last-child {
+  border-right: 0;
+}
+.facts dt {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.facts dd {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Two columns ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: clamp(32px, 6vw, 80px);
+  margin-top: clamp(32px, 4vw, 48px);
+  padding-top: clamp(28px, 4vw, 40px);
+  border-top: 1px solid var(--line);
+  align-items: start;
+}
+.body {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  gap: 40px;
+}
+.body h2 {
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+.desc {
+  white-space: pre-line;
+  max-width: 66ch;
+  font-size: 17px;
+  line-height: 1.75;
+}
+.skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.skills li {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.source {
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+.source h2 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.source p {
+  max-width: 62ch;
+  color: var(--ink-2);
+}
+.source strong,
+.source a {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ---------- Aside: salary, deadline, apply ---------- */
+.aside {
+  grid-column: 2;
+  grid-row: 1;
+  position: sticky;
+  top: calc(var(--header-h) + 24px);
+  display: grid;
+  gap: 24px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 24px 48px -36px rgba(114, 80, 68, 0.5);
+}
+.summary {
+  display: grid;
+  gap: 24px;
+}
+.asideLabel {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.salary {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.salaryPlain {
+  font-size: 24px;
+}
+.period {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.when {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.deadline {
+  font-weight: 600;
+}
+.soon {
+  color: var(--coral-ink);
+}
+.past {
+  color: #8d857f;
+}
+.apply {
+  display: grid;
+  gap: 10px;
+}
+.applyNote {
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: center;
+}
+.noneLeft {
+  color: var(--coral-ink);
+  font-weight: 500;
+}
+.applyMsg:empty {
+  display: none;
+}
+.msgOk,
+.msgError {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  animation: pop 180ms var(--ease);
+}
+.msgOk {
+  background: var(--brown-soft);
+  color: var(--brown);
+}
+.msgError {
+  background: var(--coral-soft);
+  color: var(--coral-ink);
+}
+.msgOk :global(.link),
+.msgError :global(.link) {
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+/* ---------- Gate for signed-out visitors ---------- */
+.gate {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+  padding: clamp(28px, 5vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+.gate h1 {
+  font-size: clamp(30px, 4.5vw, 44px);
+}
+.gate p {
+  color: var(--ink-2);
+  max-width: 52ch;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 28px;
+  }
+  .aside,
+  .body {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .aside {
+    /* a transform here would become the containing block of the fixed dock */
+    animation-name: fade !important;
+    position: static;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 20px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  .when {
+    padding-top: 0;
+    border-top: 0;
+    flex-direction: row-reverse;
+    text-align: right;
+  }
+  /* the (aria-hidden) stub shows the date visually; keep the text for screen readers */
+  .whenText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .salary {
+    font-size: 24px;
+  }
+  /* Apply stays reachable while reading: docked to the bottom of the viewport. */
+  .apply {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    gap: 6px;
+    padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    animation: dock 320ms var(--ease) both;
+  }
+  .applyNoteLong {
+    display: none;
+  }
+  /* room under the footer so the dock never covers content */
+  :global(body):has(.apply) {
+    padding-bottom: 104px;
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .facts > div {
+    padding: 0;
+    margin: 0;
+    border: 0;
+  }
+}
+@keyframes dock {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}

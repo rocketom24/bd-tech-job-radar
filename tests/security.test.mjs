@@ -11,7 +11,7 @@ import { neon } from "@neondatabase/serverless";
 import "dotenv/config";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const PASSWORD = "correct horse battery";
+const PASSWORD = `pw-${randomUUID()}`; // random per run: no fixed credential in the public repo
 const RUN = randomUUID().slice(0, 8);
 const sql = neon(process.env.DATABASE_URL).query;
 const SECRET = process.env.RATE_LIMIT_SECRET;

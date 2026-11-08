@@ -1,6 +1,8 @@
 # API
 
-JSON API. Job and source endpoints are read-only and **public** (no authentication required); the four `/api/auth/*` endpoints are described under [Authentication](#authentication). No pagination.
+JSON API. `GET /api/jobs` (summary list) and `GET /api/sources` are **public**. `GET /api/jobs/{id}` (full detail) **requires login**, and opening it **records a unique job-detail view** against the account's quota. The `/api/auth/*` endpoints are under [Authentication](#authentication); view, apply and usage endpoints are under [Usage tracking](#usage-tracking-phase-4). No pagination.
+
+The same API is described as OpenAPI 3.1 at `/openapi.json` and rendered with Scalar at `/docs`; the two must agree.
 
 Job objects carry both the legacy `salary` text and five structured salary fields; see [Salary](#salary).
 
@@ -29,7 +31,7 @@ Postman: import `postman/BD Tech Job Radar.postman_collection.json` (File > Impo
 - Success: `{ "data": ... }`
 - Error (every endpoint): `{ "error": { "code": string, "message": string, "details"?: object } }`. `code` is stable and machine-readable; `message` is for humans and may change.
 - 500 responses are always `{ "error": { "code": "INTERNAL_ERROR", "message": "Internal server error" }}`; the server log records only the error class and code (never messages, queries or connection details).
-- Error codes: `VALIDATION_ERROR`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `INVALID_QUERY`, `INVALID_JOB_ID`, `JOB_NOT_FOUND`, `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN_ORIGIN`, `INVALID_SUBSCRIPTION`, `APPLY_URL_UNAVAILABLE`, `VIEW_LIMIT_REACHED`, `APPLY_LIMIT_REACHED`, `RATE_LIMITED`, `INTERNAL_ERROR`. Success bodies are unchanged from earlier phases (the usage endpoints keep their `success: true` flag).
+- Error codes: `VALIDATION_ERROR`, `INVALID_JSON`, `PAYLOAD_TOO_LARGE`, `INVALID_QUERY`, `INVALID_JOB_ID`, `JOB_NOT_FOUND`, `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN_ORIGIN`, `INVALID_SUBSCRIPTION`, `APPLY_URL_UNAVAILABLE`, `VIEW_LIMIT_REACHED`, `APPLY_LIMIT_REACHED`, `RATE_LIMITED`, `INTERNAL_ERROR`. Success envelopes differ by route: most return `{ "data": ... }`; `GET /api/me/usage` returns `{ "success": true, "data": ... }`; `POST /api/jobs/{id}/view` and `/apply` return top-level `{ "success": true, ... }` fields.
 
 | Status | Meaning |
 | --- | --- |
@@ -91,10 +93,10 @@ Values are trimmed; empty/whitespace-only values are ignored. A NUL character (`
 Errors (400):
 
 ```json
-{ "error": { "message": "Repeated query parameter(s) not allowed: keyword" } }
+{ "error": { "code": "INVALID_QUERY", "message": "Repeated query parameter(s) not allowed: keyword" } }
 ```
 ```json
-{ "error": { "message": "Invalid query parameters", "details": { "keyword": ["Too big: expected string to have <=100 characters"] } } }
+{ "error": { "code": "INVALID_QUERY", "message": "Invalid query parameters", "details": { "keyword": ["Too big: expected string to have <=100 characters"] } } }
 ```
 
 ## GET /api/jobs/{id}
@@ -123,11 +125,11 @@ Identity and plan come only from the session and the database; any `userId` / `s
 Errors:
 
 ```json
-{ "error": { "message": "Invalid job id: must be a positive integer" } }
+{ "error": { "code": "INVALID_JOB_ID", "message": "Invalid job id: must be a positive integer" } }
 ```
 (400)
 ```json
-{ "error": { "message": "Job not found" } }
+{ "error": { "code": "JOB_NOT_FOUND", "message": "Job not found" } }
 ```
 (404)
 
@@ -223,7 +225,7 @@ Deletes the session behind the cookie and clears it. Always 200, including when 
 - No email verification and no password reset: there is no email delivery infrastructure yet. A forgotten password cannot be recovered.
 - Rate limits exist (above) but there is no account lockout, CAPTCHA or password-breach check.
 - No "log out everywhere", no session listing, no password change.
-- CSRF: `SameSite=Lax` plus the Origin / `Sec-Fetch-Site` check above; no CSRF token. A non-browser client can omit both headers, which is intended and carries no ambient cookie. Revisit when a frontend and CORS exist.
+- CSRF: `SameSite=Lax` plus the Origin / `Sec-Fetch-Site` check above; no CSRF token. A non-browser client can omit both headers, which is intended and carries no ambient cookie. The bundled frontend is same-origin, so no CORS is configured.
 - Gating is partial by design: the public list returns summaries only (no `description`, `sourceUrl`), the detail endpoint enforces the view quota, and the Apply endpoint is the only way to get `sourceUrl` without opening the detail. The list is unmetered and still exposes title, organization, location, salary and skills, and `?keyword=` can probe `description` text (a hit/miss oracle, not the text itself). A FREE user can also open 10 details, then use Apply for `sourceUrl`s within the Apply quota; account sharing/scraping with many accounts is not prevented.
 - Register reveals whether an email is taken (409). Login does not (generic 401, same hashing work either way).
 - Plain HTTP in development: the cookie is not `Secure` outside production.

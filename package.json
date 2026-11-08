@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
@@ -14,6 +14,8 @@
   "dependencies": {
     "@prisma/adapter-neon": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "@scalar/nextjs-api-reference": "^0.12.16",
+    "lucide-react": "1.59.0",
     "next": "16.4.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",

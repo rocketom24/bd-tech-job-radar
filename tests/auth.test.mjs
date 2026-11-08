@@ -12,7 +12,7 @@ import "dotenv/config";
 // Needs TRUSTED_IP_HEADER=x-forwarded-for in the dev server env (see .env.example).
 const fakeIp = () => `10.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const PASSWORD = "correct horse battery";
+const PASSWORD = `pw-${randomUUID()}`; // random per run: no fixed credential in the public repo
 const RUN = randomUUID().slice(0, 8);
 let n = 0;
 const newEmail = () => `authtest-${RUN}-${++n}@example.test`;

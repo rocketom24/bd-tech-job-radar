@@ -468,6 +468,16 @@
           "name": "Register",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh random password per run, so no fixed credential is published with the collection.",
+                  "pm.collectionVariables.set(\"authPassword\", \"pm-\" + pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
@@ -502,7 +512,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"postman-{{$timestamp}}@example.test\",\n  \"password\": \"a-secure-password\"\n}"
+              "raw": "{\n  \"email\": \"postman-{{$guid}}@example.test\",\n  \"password\": \"{{authPassword}}\"\n}"
             }
           }
         },
@@ -858,7 +868,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{authEmail}}\",\n  \"password\": \"a-secure-password\"\n}"
+              "raw": "{\n  \"email\": \"{{authEmail}}\",\n  \"password\": \"{{authPassword}}\"\n}"
             }
           }
         },

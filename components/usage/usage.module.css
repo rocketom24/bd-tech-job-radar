@@ -1,0 +1,127 @@
+.summary,
+.loading {
+  display: grid;
+  gap: 16px;
+}
+.planRow {
+  display: flex;
+}
+.plan {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+}
+.planPro {
+  border-color: transparent;
+  background: var(--brown-soft);
+  color: var(--brown);
+}
+.rowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.rowLabel svg {
+  color: var(--ink-2);
+}
+.row {
+  display: grid;
+  gap: 6px;
+}
+.rowHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.figure {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--muted);
+  overflow: hidden;
+}
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--brown);
+  transition: width 600ms var(--ease);
+}
+.fill.full {
+  background: var(--coral);
+}
+.fill.unlimited {
+  background: var(--brown);
+}
+.remaining {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.upgrade {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--coral-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.anon {
+  display: grid;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Inline notice used on the job detail page */
+.upgradeNotice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 32px;
+  max-width: 920px;
+  padding: clamp(24px, 4vw, 40px);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--coral);
+  border-radius: 20px;
+}
+.upgradeText {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.upgradeNotice h2 {
+  font-size: clamp(26px, 3.5vw, 36px);
+}
+.upgradeNotice p {
+  color: var(--ink-2);
+  max-width: 52ch;
+}
+.upgradeUsage {
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--soft);
+}
+@media (max-width: 760px) {
+  .upgradeNotice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

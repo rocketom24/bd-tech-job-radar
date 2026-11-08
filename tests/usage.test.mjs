@@ -39,7 +39,7 @@ async function call(path, { method = "POST", body, cookie } = {}) {
 }
 async function newUser(plan = "FREE") {
   const email = `usagetest-${RUN}-${++n}@example.test`;
-  const r = await call("/api/auth/register", { body: { email, password: "correct horse battery" } });
+  const r = await call("/api/auth/register", { body: { email, password: `pw-${randomUUID()}` } });
   assert.equal(r.status, 201);
   if (plan !== "FREE") await sql(`UPDATE "User" SET "subscriptionStatus" = $1 WHERE id = $2`, [plan, r.body.data.id]);
   return { id: r.body.data.id, cookie: r.cookie };

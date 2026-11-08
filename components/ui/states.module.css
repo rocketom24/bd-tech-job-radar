@@ -1,0 +1,17 @@
+.state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 56px 0 24px;
+  max-width: 52ch;
+  animation: rise 320ms var(--ease) both;
+}
+.state h2 {
+  font-size: 26px;
+}
+.state p {
+  color: var(--ink-2);
+}
+.state .btn {
+  margin-top: 6px;
+}

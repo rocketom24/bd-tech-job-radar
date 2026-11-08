@@ -1,0 +1,238 @@
+.page {
+  padding-block: clamp(40px, 7vw, 80px) 0;
+}
+.head {
+  max-width: 760px;
+}
+.head h1 {
+  font-size: clamp(36px, 5.4vw, 64px);
+  line-height: 1;
+  margin-bottom: 18px;
+}
+.head p {
+  font-size: 18px;
+  color: var(--ink-2);
+  max-width: 54ch;
+}
+
+.tableWrap {
+  margin-top: clamp(36px, 5vw, 56px);
+  max-width: 960px;
+}
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.table th,
+.table td {
+  padding: 18px 20px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+.table thead th {
+  border-bottom: 1px solid var(--ink);
+  padding-block: 0 24px;
+}
+.table tbody th {
+  font-weight: 500;
+}
+.table tbody td {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.table tfoot td {
+  border-bottom: 0;
+  padding-top: 24px;
+}
+.table tr > :first-child {
+  padding-left: 0;
+}
+/* Pro column reads as one tinted band */
+.pro {
+  background: var(--soft);
+}
+.table thead .pro {
+  border-radius: 16px 16px 0 0;
+  padding-top: 20px;
+}
+.table tfoot .pro {
+  border-radius: 0 0 16px 16px;
+  padding-bottom: 24px;
+}
+.table thead th:not(.pro) {
+  padding-top: 20px;
+}
+.planName {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--coral-soft);
+  color: var(--coral-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.price {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--display);
+  font-size: 40px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.priceTbd {
+  font-size: 26px;
+  line-height: 40px;
+  color: var(--ink-2);
+}
+.planNote {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.rowNote {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.usage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 32px;
+  align-items: start;
+  max-width: 960px;
+  margin-top: clamp(56px, 8vw, 88px);
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+.usage h2 {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+.usage p {
+  color: var(--ink-2);
+  max-width: 40ch;
+}
+.usageBox {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+/* Narrow screens: the table restacks. Plan headers sit side by side, then each feature
+   gets its own block with its label on top and the two plan values labelled beneath. */
+@media (max-width: 760px) {
+  .table,
+  .table thead,
+  .table tbody,
+  .table tfoot {
+    display: block;
+  }
+  .table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 10px;
+  }
+  .table th,
+  .table td,
+  .table tr > :first-child {
+    width: auto;
+    padding: 0;
+    border: 0;
+  }
+  /* empty corner cells */
+  .table thead td,
+  .table tfoot td:first-child {
+    display: none;
+  }
+  .table thead th,
+  .table thead th:not(.pro),
+  .table thead .pro {
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  .table thead .pro {
+    border-color: transparent;
+  }
+  .table tbody tr {
+    row-gap: 8px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .table tbody th {
+    grid-column: 1 / -1;
+  }
+  .table tbody td {
+    display: grid;
+    gap: 2px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--soft);
+    font-size: 18px;
+  }
+  .table tbody td.pro {
+    background: var(--brown-soft);
+  }
+  .table tbody td::before {
+    content: attr(data-plan);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--ink-2);
+  }
+  .table tfoot tr {
+    padding-top: 20px;
+    align-items: start;
+  }
+  .table tfoot .pro {
+    padding: 0;
+    background: none;
+  }
+  .price {
+    font-size: 30px;
+  }
+  .priceTbd {
+    font-size: 20px;
+    line-height: 30px;
+  }
+  .planName {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .planNote {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .table tfoot :global(.btn) {
+    width: 100%;
+    height: auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+    font-size: 14px;
+  }
+  .usage {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}

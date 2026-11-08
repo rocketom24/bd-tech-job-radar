@@ -2,7 +2,7 @@
 
 A 3-day production-style demo. Keep it simple and realistic. Nothing is built without a reason.
 
-**Status:** Day 1 backend is implemented: Prisma schema and migration, seed data, and three read-only endpoints (see [README.md](README.md) and [API.md](API.md) for what runs today). Sections 2, 7, 8 and 9 and the "planned" parts of sections 3 and 5 describe intent, not current behavior. Where this file and the code differ, the code, `API.md` and `DATABASE_DESIGN.md` are authoritative.
+**Status:** Implemented: Prisma schema and migrations, seed data, public job/source endpoints, email + password auth with database sessions, server-side FREE/PRO quotas, Postgres rate limiting, and the Next.js frontend (search, job detail, auth, pricing, Scalar docs at `/docs`). See [README.md](README.md) and [API.md](API.md) for what runs today. Sections 2, 7, 8 and 9 and the "planned" parts of sections 3 and 5 describe intent, not current behavior. Where this file and the code differ, the code, `API.md` and `DATABASE_DESIGN.md` are authoritative.
 
 ---
 
@@ -261,7 +261,7 @@ Email + password, database-backed sessions, no external auth service. All logic 
 - **Rate limiting** (`lib/rate-limit.ts`, table `RateLimit`): fixed windows counted in Postgres with one atomic upsert per check, so every app instance shares the counters (no in-process state, no Redis). The window is computed from the database clock. Limits: register 5/hour per IP; login 20/15 min per IP and 10/15 min per target email; view 60/min and apply 20/min per authenticated user. Exceeding a limit returns 429 `RATE_LIMITED` with `Retry-After`. `GET` endpoints are not limited. The user-level limits run after authentication and are separate from the lifetime quotas (`VIEW_LIMIT_REACHED` / `APPLY_LIMIT_REACHED`).
 - **IP handling**: the client IP is read only from the header named by `TRUSTED_IP_HEADER` (set it to a header your platform overwrites, e.g. `x-real-ip` on Vercel). Unset means no header is trusted and all clients share one `unknown` bucket (strict but safe; it cannot be bypassed by spoofing). IPs and emails are stored only as `HMAC-SHA256(RATE_LIMIT_SECRET, scope + value)` truncated to 128 bits. A missing or short (<32 chars) secret makes the limited routes return 500 rather than skipping the limit.
 - **Errors**: every API error is `{ error: { code, message, details? } }` built by `lib/api-error.ts`; 500s carry no internals.
-- **Headers** (`next.config.ts`): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` in production only, `X-Powered-By` removed. No CSP (API-only app; an untested policy could break the starter page).
+- **Headers** (`next.config.ts`): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` in production only, `X-Powered-By` removed. No CSP yet (the frontend and the Scalar `/docs` page, which loads its script from jsDelivr, have not been tested under one).
 - **Body size**: auth bodies over 10,000 characters are rejected with 413 before parsing.
 
 ---

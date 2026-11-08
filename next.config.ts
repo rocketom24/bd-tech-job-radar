@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   cacheComponents: true,
   partialPrefetching: true,
-  // No CSP: the app is API-only today and a guessed policy could break the starter page.
+  // Dev-only route badge. On mobile every corner collides with UI: bottom corners sit on the
+  // fixed Apply dock, top-right on the menu button, top-left on the logo. Hidden; Next.js still
+  // shows compile and runtime errors (docs: devIndicators). No effect on production builds.
+  devIndicators: false,
+  // No CSP yet: an untested policy could break the frontend or the Scalar /docs page (jsDelivr script).
   async headers() {
     const headers = [
       { key: "X-Content-Type-Options", value: "nosniff" },

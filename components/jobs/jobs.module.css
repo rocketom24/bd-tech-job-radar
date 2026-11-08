@@ -1,0 +1,525 @@
+/* ---------- Hero ---------- */
+.hero {
+  padding-block: clamp(16px, 2.5vw, 28px) clamp(28px, 4vw, 44px);
+  text-align: center;
+}
+.heroWrap {
+  max-width: calc(var(--max) + 80px);
+}
+/* Inset terracotta panel. Faint concentric rings rise from below, echoing the radar mark;
+   a warm light from the top and deeper corners give depth without noise. */
+.heroPanel .search {
+  color: var(--ink);
+}
+.heroPanel {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  padding: clamp(52px, 8vw, 104px) clamp(20px, 5vw, 72px) clamp(44px, 6vw, 72px);
+  border-radius: clamp(20px, 3vw, 32px);
+  color: var(--ink);
+  /* mid terracotta, light enough for black text (5:1 or better everywhere text sits) */
+  background:
+    radial-gradient(ellipse 55% 50% at 50% 0%, rgba(255, 226, 208, 0.35), transparent 70%),
+    radial-gradient(ellipse 60% 60% at 100% 100%, rgba(90, 30, 12, 0.18), transparent 70%),
+    linear-gradient(170deg, #dc8e70 0%, #d4805f 55%, #c9704f 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 30px 60px -40px rgba(120, 44, 20, 0.55);
+}
+.heroPanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: repeating-radial-gradient(circle at 50% 135%, transparent 0 79px, rgba(60, 20, 8, 0.09) 79px 80px);
+  mask-image: radial-gradient(ellipse 80% 90% at 50% 100%, #000 30%, transparent 75%);
+  pointer-events: none;
+}
+/* Title in black; the second half is a touch lighter in weight so the two lines still read as a pair. */
+.hero .heroTitle {
+  color: var(--ink);
+}
+.hero .heroAccent {
+  display: block;
+  color: var(--ink);
+  font-weight: 450;
+}
+.hero .lead {
+  color: #2e1a12;
+}
+.hero .lead strong {
+  color: var(--ink);
+}
+.hero .leadSoon {
+  color: #5a1d0c;
+  font-weight: 600;
+}
+.hero .search {
+  border-color: transparent;
+  box-shadow: 0 24px 48px -24px rgba(70, 24, 10, 0.55);
+}
+.hero .search:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(255, 240, 232, 0.6), 0 24px 48px -24px rgba(70, 24, 10, 0.55);
+}
+/* Normal width (not the condensed h1 default), a touch looser leading, and a two-tone
+   headline: the claim in ink, the range of sources in a lighter brown. */
+.heroTitle {
+  max-width: 21ch;
+  font-size: clamp(38px, 5.6vw, 70px);
+  font-weight: 650;
+  font-variation-settings: "wdth" 100;
+  font-optical-sizing: auto;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  margin-bottom: clamp(18px, 2.5vw, 26px);
+}
+.heroAccent {
+  display: block;
+  font-weight: 500;
+  color: var(--brown);
+}
+.lead {
+  max-width: 56ch;
+  font-size: clamp(16px, 1.8vw, 19px);
+  line-height: 1.55;
+  color: var(--ink-2);
+  text-wrap: balance;
+  margin-bottom: clamp(28px, 4vw, 40px);
+}
+.lead strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.leadSoon {
+  color: var(--coral-ink);
+}
+
+/* ---------- Search: one bar, two fields ---------- */
+.search {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  width: 100%;
+  max-width: 820px;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--line), 0 18px 40px -28px rgba(114, 80, 68, 0.45);
+  transition:
+    border-color var(--fast) ease,
+    box-shadow var(--fast) ease;
+}
+.search:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px var(--coral-soft), 0 18px 40px -28px rgba(114, 80, 68, 0.45);
+}
+.searchCell {
+  position: relative;
+  display: grid;
+  padding: 12px 52px 12px 48px;
+  border-radius: 17px;
+  transition: background var(--fast) ease;
+}
+.searchCell:focus-within {
+  background: var(--soft);
+}
+.searchWhere {
+  border-left: 1px solid var(--line);
+}
+.searchLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brown);
+  line-height: 1.2;
+}
+.searchInput {
+  width: 100%;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink); /* inputs inherit color; the hero panel is white */
+  font-size: 17px;
+  outline: none;
+}
+.searchInput::placeholder {
+  color: #9a918a;
+}
+.searchInput::-webkit-search-cancel-button {
+  display: none;
+}
+.searchIcon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  margin-top: -9px;
+  color: var(--ink-2);
+  pointer-events: none;
+  transition: color var(--fast) ease;
+}
+.searchCell:focus-within .searchIcon {
+  color: var(--coral-ink);
+}
+.clearX {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  margin-top: -16px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  animation: pop 140ms var(--ease);
+  transition: background var(--fast) ease;
+}
+.clearX:hover {
+  background: var(--muted);
+  color: var(--ink);
+}
+
+/* ---------- Sticky toolbar ---------- */
+.toolbar {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  border-block: 1px solid var(--line);
+}
+.toolbarInner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 60px;
+}
+.chips {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-block: 10px;
+}
+.chips::-webkit-scrollbar {
+  display: none;
+}
+.chip {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--ink-2);
+  transition:
+    background var(--fast) ease,
+    border-color var(--fast) ease,
+    color var(--fast) ease,
+    transform var(--fast) var(--ease);
+}
+.chip:hover {
+  border-color: var(--ink-2);
+  color: var(--ink);
+}
+.chip:active {
+  transform: scale(0.95);
+}
+.chip[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.count :global(.spinner) {
+  color: var(--brown);
+}
+.clearAll {
+  border: 0;
+  background: none;
+  font-size: 14px;
+  color: var(--coral-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  animation: fade 160ms ease;
+  white-space: nowrap;
+}
+
+/* ---------- Results ---------- */
+.list {
+  padding-top: 8px;
+  transition: opacity 180ms ease;
+}
+.list[aria-busy="true"] {
+  opacity: 0.45;
+}
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(170px, auto);
+  gap: 4px 28px;
+  align-items: start;
+  padding: 26px 0;
+  border-bottom: 1px solid var(--line);
+  animation: rise 460ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.rowPast {
+  opacity: 0.6;
+}
+
+/* Deadline stub: the one loud element in a listing. */
+.stub {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  width: 64px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  line-height: 1;
+  transition:
+    border-color var(--fast) ease,
+    transform 220ms var(--ease);
+}
+.stubMonth {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brown);
+}
+.stubDay {
+  margin: 4px 0 5px;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 650;
+  font-variation-settings: "wdth" 85;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.stubNote {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.stubOpen {
+  margin-bottom: 6px;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--brown);
+}
+.stub.tone-soon {
+  border-color: var(--coral);
+  background: var(--coral-soft);
+}
+.stub.tone-soon .stubNote,
+.stub.tone-soon .stubMonth {
+  color: var(--coral-ink);
+  font-weight: 600;
+}
+.stub.tone-past {
+  background: var(--soft);
+}
+.stub.tone-none {
+  border-style: dashed;
+}
+.stubLg {
+  width: 76px;
+  height: 86px;
+}
+.stubLg .stubDay {
+  font-size: 34px;
+}
+
+.org {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 14px;
+  color: var(--brown);
+}
+.orgName {
+  font-weight: 500;
+}
+.verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  background: var(--brown-soft);
+  color: var(--brown);
+  font-size: 12px;
+  font-weight: 500;
+}
+.titleWrap {
+  margin-top: 4px;
+  font-size: clamp(20px, 2.2vw, 24px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.title {
+  background: linear-gradient(var(--coral), var(--coral)) 0 100% / 0 2px no-repeat;
+  transition: background-size 260ms var(--ease);
+}
+/* stretched link: the whole row is one real link */
+.title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.title:focus-visible {
+  outline: none;
+}
+.row:has(.title:focus-visible) {
+  outline: 2px solid var(--coral-ink);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+.row:hover .title,
+.title:focus-visible {
+  background-size: 100% 2px;
+}
+.row:hover .stub {
+  border-color: var(--ink);
+  transform: translateY(-2px);
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.meta li:first-child {
+  color: var(--ink);
+  font-weight: 500;
+}
+.skills {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #8a817a;
+}
+.pay {
+  text-align: right;
+  padding-top: 2px;
+}
+.salary {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.salaryPlain {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.period {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.deadlineText {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.deadlineText.tone-soon {
+  color: var(--coral-ink);
+  font-weight: 600;
+}
+.deadlineText.tone-past {
+  color: #8d857f;
+}
+
+@media (max-width: 760px) {
+  .search {
+    grid-template-columns: minmax(0, 1fr);
+    border-radius: 16px;
+  }
+  .searchCell {
+    border-radius: 15px;
+  }
+  .searchWhere {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .toolbarInner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-inline: 0;
+  }
+  .chips {
+    padding: 10px var(--gutter) 6px;
+    /* fade the overflow edge so it reads as scrollable */
+    mask-image: linear-gradient(90deg, #000 85%, transparent);
+  }
+  .status {
+    justify-content: space-between;
+    padding: 0 var(--gutter) 10px;
+  }
+  .row {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 4px 16px;
+    padding: 22px 0;
+  }
+  .stub {
+    width: 52px;
+    height: 60px;
+    border-radius: 10px;
+  }
+  .stubDay {
+    font-size: 22px;
+    margin: 3px 0 4px;
+  }
+  .pay {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    text-align: left;
+    margin-top: 10px;
+    padding-top: 0;
+  }
+  .salary {
+    font-size: 16px;
+  }
+  /* the (aria-hidden) stub shows the deadline visually; keep the text for screen readers */
+  .deadlineText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .row:hover .stub {
+    transform: none;
+  }
+}

@@ -1,10 +1,12 @@
 # Bangladesh Tech Job Radar
 
-A job discovery and aggregation backend focused on Bangladesh's technology job market. Job seekers currently have to check many scattered sources (government circulars, company career pages, university and NGO notices, portals); the long-term idea is one searchable place with every posting in a common shape, linked back to its source.
+A job discovery and aggregation web app focused on Bangladesh's technology job market. Job seekers currently have to check many scattered sources (government circulars, company career pages, university and NGO notices, portals); the long-term idea is one searchable place with every posting in a common shape, linked back to its source.
 
 ## Status
 
-**Backend-focused demo (Day 1 foundation).** What exists today:
+**Full-stack demo (backend, auth, quotas and frontend complete).** What exists today:
+
+- A Next.js frontend: job search with filters (`/`), job detail with Apply (`/jobs/[id]`), login and registration, a pricing page with live usage (`/pricing`), and the Scalar API reference (`/docs`, spec at `/openapi.json`).
 
 - A PostgreSQL schema (Neon) with Prisma migrations and eight tables (`JobSource`, `Job`, `User`, `Session`, `Usage`, `JobView`, `ApplyClick`, `RateLimit`). Jobs carry a legacy `salary` text plus structured salary fields (see [API.md](API.md#salary)).
 - Public JSON endpoints: `GET /api/jobs` (summary list/search, no `description`/`sourceUrl`) and `GET /api/sources`. `GET /api/jobs/{id}` (full detail) requires login and consumes the view quota.
@@ -15,7 +17,7 @@ A job discovery and aggregation backend focused on Bangladesh's technology job m
 - FREE/PRO entitlements (`lib/entitlements.ts`) enforced server-side on `POST /api/jobs/{id}/view`, `POST /api/jobs/{id}/apply` and `GET /api/me/usage` (login required, lifetime quotas, row-lock concurrency protection).
 - Database-backed rate limiting, Origin/CSRF checks, security headers and one error format (`{ error: { code, message } }`) across every endpoint (Phase 5 hardening).
 
-What does **not** exist: scraping or ingestion of real job sites, a frontend (the home page is the default Next.js starter), email verification, password reset, **payments of any kind (production payment integration is not implemented; PRO can only be set directly in the database)**, pagination, full-text search. The code has not been deployed or tested against a production database. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
+What does **not** exist: scraping or ingestion of real job sites, email verification, password reset, **payments of any kind (production payment integration is not implemented; PRO can only be set directly in the database)**, pagination, full-text search. The code has not been deployed or tested against a production database. See [Limitations](#current-limitations) and [Roadmap](#future-roadmap).
 
 ## Tech stack
 
@@ -34,6 +36,10 @@ The planned ingestion pipeline (Sources -> Collection -> Raw Content -> Extracti
 ## Repository structure
 
 ```
+app/page.tsx, app/jobs/, app/login/, app/register/, app/pricing/   frontend pages
+app/docs/, app/openapi.json/  Scalar API reference + OpenAPI 3.1 spec (lib/openapi.ts)
+components/                  UI components (jobs, auth, usage, layout)
+lib/api-client.ts, lib/auth-context.tsx, lib/utils.ts   browser API client, session state, formatting
 app/api/jobs/route.ts        GET /api/jobs (filters)
 app/api/jobs/[id]/route.ts   GET /api/jobs/{id}
 app/api/sources/route.ts     GET /api/sources
@@ -135,7 +141,7 @@ npm run build
 npm start
 ```
 
-Provide `DATABASE_URL` (pooled) in the environment of the running server. Apply migrations separately with `npx prisma migrate deploy` using `DIRECT_URL`.
+`npm run build` runs `prisma generate` first (the client in `generated/` is git-ignored), so a fresh clone or a Vercel build needs no extra step. The build needs `DATABASE_URL` to be set (it does not connect); the running server needs `DATABASE_URL` (pooled), `RATE_LIMIT_SECRET` (32+ characters, different per environment) and, behind a trusted proxy, `TRUSTED_IP_HEADER` (on Vercel: `x-real-ip`). Apply migrations separately, from your machine, with `npx prisma migrate deploy` and the production `DIRECT_URL` set in that shell only.
 
 ## API overview
 
@@ -190,10 +196,10 @@ Limits are lifetime per account; no daily or monthly reset is defined. A *unique
 - The job list is intentionally public but returns summaries only. Full detail (`GET /api/jobs/{id}`) is login-gated and view-metered; `sourceUrl` is also returned by the Apply endpoint. See the limitations in [API.md](API.md).
 - Rate limiting is per IP / email / user in Postgres; there is no CAPTCHA, account lockout or WAF, and the IP bucket is only as trustworthy as `TRUSTED_IP_HEADER`.
 - No email verification and no password reset (no email delivery infrastructure yet).
-- No frontend; `/` is the unmodified Next.js starter page.
+- The frontend is a first version (search, job detail, auth, pricing, Scalar docs at `/docs`); no payments, so PRO cannot be bought.
 - `Job.sourceUrl` is not unique, so there is no deduplication yet.
 - Tests need a running server and the seeded development database; there is no CI.
 
 ## Future roadmap
 
-Planned, not implemented: real ingestion from a few practical sources (collection, extraction, normalization, validation, basic deduplication), a minimal frontend with search and job details, a basic usage-restriction demo using `User`/`Usage`, pagination, and deployment. Further out: authentication, payments, OCR/AI extraction, full-text search, background workers. See [ARCHITECTURE.md](ARCHITECTURE.md).
+Planned, not implemented: real ingestion from a few practical sources (collection, extraction, normalization, validation, basic deduplication), pagination, email verification and password reset. Further out: payments, OCR/AI extraction, full-text search, background workers. See [ARCHITECTURE.md](ARCHITECTURE.md).
